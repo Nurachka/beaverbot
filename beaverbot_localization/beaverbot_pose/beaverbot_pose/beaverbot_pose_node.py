@@ -91,16 +91,16 @@ class BeaverbotPoseNode:
             "/fix", NavSatFix, self._gps_callback)
 
         self._imu_sub = rospy.Subscriber(
-            "/imu/data_raw", Imu, self._imu_callback)
+            "/imu", Imu, self._imu_callback)
 
     def _register_publishers(self):
         """! Register publishers method
         """
         self._rear_odom_pub = rospy.Publisher(
-            "/hakuroukun_pose/rear_wheel_odometry", Odometry, queue_size=10)
+            "/beaverbot_pose/odom", Odometry, queue_size=10)
 
         self._orientation_pub = rospy.Publisher(
-            "/hakuroukun_pose/orientation", Float64, queue_size=1)
+            "/beaverbot_pose/orientation", Float64, queue_size=1)
 
         self._tf_broadcaster = tf.TransformBroadcaster()
 
@@ -174,7 +174,7 @@ class BeaverbotPoseNode:
         while not rospy.is_shutdown() and (time.time() - start_time < 1):
             try:
                 data = rospy.wait_for_message(
-                    "/imu/data_raw", Imu, timeout=1.0)
+                    "/imu", Imu, timeout=1.0)
 
                 euler = tf.transformations.euler_from_quaternion(
                     [data.orientation.x,

@@ -1,10 +1,11 @@
 <launch>
-    <arg name="simulation" default="true" />
+    <arg name="simulation" default="false" />
     <arg name="coverage_length" default="13.0"/>
     <arg name="coverage_width" default="13.0"/>
     <arg name="coverage_iteration" default="2"/>
     <arg name="rvizconfig" default="$(find beaverbot_description)/rviz/urdf.rviz"/>
     <arg name="model" default="$(find beaverbot_description)/urdf/beaverbot.urdf.xacro"/>
+    <arg name="rosbag_name" default="$(find beaverbot_launch)/rosbags/data.bag"/>
 
     <param name="robot_description" command="$(find xacro)/xacro $(arg model)"/>
    
@@ -42,9 +43,9 @@
         </node>
     </group>
 
-    <node pkg="laser_filters" type="scan_to_scan_filter_chain" name="laser_filter">
+    <!-- <node pkg="laser_filters" type="scan_to_scan_filter_chain" name="laser_filter">
         <rosparam command="load" file="$(find beaverbot_launch)/config/laser_filter.yaml" />
-    </node>
+    </node> -->
 
     <!-- <node name="generate_trajectory_node" pkg="trajectory_generation" type="generate_trajectory" required="true">
       <param name="~iteration" value="$(arg coverage_iteration)"/>
@@ -52,13 +53,15 @@
       <param name="~width" value="$(arg coverage_width)"/>
     </node> -->
 
-    <node name="obstacle_detection_node" pkg="obstacle_detection" type="obstacle_detection_node" required="true"/>  
+    <!-- <node name="obstacle_detection_node" pkg="obstacle_detection" type="obstacle_detection_node" required="true"/>   -->
 
-    <node name="map_server" pkg="map_server" type="map_server" args="$(find beaverbot_launch)/maps/dummy_map.yml" />
+    <!-- <node name="map_server" pkg="map_server" type="map_server" args="$(find beaverbot_launch)/maps/dummy_map.yml" /> -->
     
-    <include file="$(find beaverbot_control)/launch/beaverbot_control.launch"/>
+    <!-- <include file="$(find beaverbot_control)/launch/beaverbot_control.launch"/> -->
 
     <!-- <node name="laserscan2costmap" pkg="laserscan2costmap" type="laserscan2costmap" output="screen"/> -->
 
-    <node name="rviz" pkg="rviz" type="rviz" args="-d $(arg rvizconfig)"/>
+    <!-- <node name="rviz" pkg="rviz" type="rviz" args="-d $(arg rvizconfig)"/> -->
+    <node name="rosbag" pkg="rosbag" type="record" args="-O $(arg rosbag_name) /imu /fix /beaverbot_pose/odom /beaverbot_pose/orientation /cmd_vel"/>
+
 </launch>
