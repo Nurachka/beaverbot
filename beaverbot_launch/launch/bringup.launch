@@ -1,18 +1,18 @@
 <launch>
     <arg name="simulation" default="false" />
-    <arg name="coverage_length" default="13.0"/>
+    <!-- <arg name="coverage_length" default="13.0"/>
     <arg name="coverage_width" default="13.0"/>
     <arg name="coverage_iteration" default="2"/>
     <arg name="rvizconfig" default="$(find beaverbot_description)/rviz/urdf.rviz"/>
-    <arg name="model" default="$(find beaverbot_description)/urdf/beaverbot.urdf.xacro"/>
+    <arg name="model" default="$(find beaverbot_description)/urdf/beaverbot.urdf.xacro"/> -->
     <arg name="rosbag_name" default="$(find beaverbot_launch)/rosbags/data.bag"/>
 
-    <param name="robot_description" command="$(find xacro)/xacro $(arg model)"/>
+    <!-- <param name="robot_description" command="$(find xacro)/xacro $(arg model)"/>
    
     <node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher" />
 
     <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"
-            respawn="false" output="screen" />
+            respawn="false" output="screen" /> -->
 
     <group if = "$(arg simulation)">
         <include file="$(find beaverbot_launch)/launch/beaverbot_gazebo.launch">

@@ -78,3 +78,38 @@ class RLSOnline:
 
             # increase the time step
             self.previousTimeStep = self.previousTimeStep + 1
+    
+    def predict_sim_with_forgetting_factor(self, yaw, yaw_previous, ground_angular_velocity_z, delta_t, lam = 0.98):
+            """
+            First calculating the theta difference and the angular velocity 
+            """
+            yaw_diff= np.array([yaw - yaw_previous])
+            yaw_diff = (yaw_diff + math.pi) % (2 * math.pi) - math.pi  # unwrap to [-pi, pi]
+            C = np.array([delta_t * ground_angular_velocity_z ])
+            #Calculating L matrix and its inverse
+            L_matrix = self.R + np.matmul(C, np.matmul(self.estimationErrorCovarianceMatrices[self.previousTimeStep], C.T))
+            L_matrix_inverse = np.linalg.inv(L_matrix)            
+
+            #Calculating the Kalman gain matrix
+            gain_matrix = np.matmul(self.estimationErrorCovarianceMatrices[self.previousTimeStep], np.matmul(C.T, L_matrix_inverse))
+
+            #Calculating the estimation error(correction term (yk -Cxk))
+            error = (C-yaw_diff) - np.matmul(C, self.estimates[self.previousTimeStep])
+            rospy.loginfo(f"Error in RLS: {error}")
+            #Calculating the new estimate
+            estimate = self.estimates[self.previousTimeStep] + np.matmul(gain_matrix, error)
+
+            #Calculating the new estimation error covariance matrix
+            ImKc = np.eye(np.size(self.s0), np.size(self.s0)) - np.matmul(gain_matrix, C)
+            estimationErrorCovarianceMatrix = np.matmul(ImKc, self.estimationErrorCovarianceMatrices[self.previousTimeStep]) * (1/lam)
+
+            #Storing the results
+            self.estimates.append(estimate)
+            self.estimationErrorCovarianceMatrices.append(estimationErrorCovarianceMatrix)
+            self.gainMatrices.append(gain_matrix)
+            self.errors.append(error)
+            self.yaw_diff.append(yaw_diff)
+            self.angular_vel_z.append(ground_angular_velocity_z)
+
+            # increase the time step
+            self.previousTimeStep = self.previousTimeStep + 1
