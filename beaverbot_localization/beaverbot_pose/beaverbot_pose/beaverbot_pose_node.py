@@ -84,6 +84,15 @@ class BeaverbotPoseNode:
         self._imu_calibration_threshold = rospy.get_param(
             "~imu_calibration_threshold", 200)
 
+        self._initial_x = rospy.get_param(
+            "~initial_x", 0.0)
+
+        self._initial_y = rospy.get_param(
+            "~initial_y", 0.0)
+
+        self._initial_theta = rospy.get_param(
+            "~initial_theta", 0.0)
+
     def _register_subscribers(self):
         """! Register ROS subscribers method
         """
@@ -211,6 +220,11 @@ class BeaverbotPoseNode:
 
             self._yaw = 0.0
 
+        # Shift the calibrated zero-heading by initial_theta so that the
+        # published yaw reads initial_theta right after calibration,
+        # instead of 0.
+        self._imu_offset -= self._initial_theta
+
         rospy.loginfo("IMU data received.")
 
     def _gps_callback(self, data: NavSatFix):
@@ -227,10 +241,10 @@ class BeaverbotPoseNode:
             self._initial_lat, self._initial_lon)
 
         self._x_rear = self._x_gps - self._gps_to_rear_axis * \
-            math.cos(self._yaw)
+            math.cos(self._yaw) + self._initial_x
 
         self._y_rear = self._y_gps - self._gps_to_rear_axis * \
-            math.sin(self._yaw)
+            math.sin(self._yaw) + self._initial_y
 
     def _imu_callback(self, data: Imu):
         """! IMU callback method
@@ -325,7 +339,12 @@ class BeaverbotPoseNode:
         @ x_gps_local: x position of the gps in the local frame
         @ y_gps_local: y position of the gps in the local frame
         """
-        rotation_angle = math.radians(rospy.get_param("~rotation_angle", 0.0))
+        # initial_theta rotates the GPS (x, y) frame by the same angle the
+        # yaw reference is shifted by (see _get_initial_orientation), so
+        # that dx/dt = v*cos(yaw), dy/dt = v*sin(yaw) stays consistent in
+        # the aligned frame.
+        rotation_angle = math.radians(
+            rospy.get_param("~rotation_angle", 0.0)) + self._initial_theta
 
         x_gps, y_gps = gc.ll2xy(lat, long, _initial_lat, _initial_lon)
 
