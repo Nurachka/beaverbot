@@ -37,7 +37,7 @@ class BeaverbotPoseNode:
         """
         super(BeaverbotPoseNode, self).__init__()
 
-        rospy.init_node("robot_localization", anonymous=True)
+        rospy.init_node("robot_localization")
 
         self._register_parameters()
 
