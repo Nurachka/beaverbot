@@ -25,23 +25,18 @@ class MPC:
     assuming a fixed (known) wheel slip factor.
 
     Requires the trajectory to be built with trajectory_type="wheel", so
-    that trajectory.u[0, :] / trajectory.u[1, :] hold [v, w] with
-    w = angular_velocity_sign * (vr - vl) / wheel_base (see
-    BeaverbotControl._retrieve_u's "wheel" branch and its
-    ~angular_velocity_sign rosparam). Default angular_velocity_sign=-1
-    matches what the "feedforward" controller already publishes to
-    cmd_vel and has been validated on the real robot. The raw per-wheel
+    that trajectory.u[0, :] / trajectory.u[1, :] hold [v, w] with the
+    standard convention w = (vr - vl) / wheel_base (see
+    BeaverbotControl._retrieve_u's "wheel" branch). The raw per-wheel
     references (vr_ref, vl_ref) are recovered from [v, w], and MPC's own
     wheel-velocity corrections are converted back to [v, w] in the same
-    convention before being returned, so cmd_vel stays directly
-    comparable across the feedforward / mpc / rls_compensator controllers.
+    convention before being returned.
     """
     # ==================================================================================================
     # PUBLIC METHODS
     # ==================================================================================================
     def __init__(self, trajectory, wheel_base, sampling_time, N_horizon=10,
-                 slip=0.0, vr_max=0.5, vl_max=0.5, du_max=0.05,
-                 angular_velocity_sign=-1):
+                 slip=0.0, vr_max=0.5, vl_max=0.5, du_max=0.05):
         """! Constructor
         @param trajectory<instance>: The trajectory
         @param wheel_base<float>: Distance between the wheels of the robot.
@@ -52,13 +47,8 @@ class MPC:
         @param vl_max<float>: Maximum velocity of the left wheel.
         @param du_max<float>: Maximum allowed change in each wheel's
         delta-velocity per step.
-        @param angular_velocity_sign<int>: Sign relating trajectory.u's w
-        to the standard (vr - vl) / wheel_base convention; must match
-        BeaverbotControl's ~angular_velocity_sign.
         """
         self.trajectory = trajectory
-
-        self._angular_velocity_sign = angular_velocity_sign
 
         self._mpc = LinearMPC(dt=sampling_time, wheel_base=wheel_base,
                               N_horizon=N_horizon, vr_max=vr_max, vl_max=vl_max,
@@ -93,7 +83,7 @@ class MPC:
 
         v = (vr_cmd + vl_cmd) / 2
 
-        w = self._angular_velocity_sign * (vr_cmd - vl_cmd) / self._mpc.l
+        w = (vr_cmd - vl_cmd) / self._mpc.l
 
         return True, [v, w]
 
@@ -103,7 +93,7 @@ class MPC:
     def _wheel_velocities(self, index):
         """! Recover the raw right/left wheel-velocity references at the
         given trajectory index from trajectory.u = [v, w] (see class
-        docstring for the angular_velocity_sign convention).
+        docstring for the sign convention).
         @param index<int>: The trajectory index
         @return<tuple>: The right and left wheel-velocity references
         (vr_ref, vl_ref)
@@ -112,9 +102,9 @@ class MPC:
 
         w_ref = self.trajectory.u[1, index]
 
-        vr_ref = v_ref + self._angular_velocity_sign * w_ref * self._mpc.l / 2
+        vr_ref = v_ref + w_ref * self._mpc.l / 2
 
-        vl_ref = v_ref - self._angular_velocity_sign * w_ref * self._mpc.l / 2
+        vl_ref = v_ref - w_ref * self._mpc.l / 2
 
         return vr_ref, vl_ref
 

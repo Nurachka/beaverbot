@@ -34,8 +34,7 @@ class MPCRLS(MPC):
     # ==================================================================================================
     def __init__(self, trajectory, wheel_base, sampling_time, N_horizon=10,
                  vr_max=0.5, vl_max=0.5, du_max=0.05,
-                 warmup_steps=50, slip_clip=0.5, lam=0.96,
-                 angular_velocity_sign=-1):
+                 warmup_steps=50, slip_clip=0.5, lam=0.96):
         """! Constructor
         @param trajectory<instance>: The trajectory
         @param wheel_base<float>: Distance between the wheels of the robot.
@@ -50,14 +49,10 @@ class MPCRLS(MPC):
         @param slip_clip<float>: The estimated slip is clipped to
         [-slip_clip, slip_clip].
         @param lam<float>: Forgetting factor used by the RLS estimator.
-        @param angular_velocity_sign<int>: Sign relating trajectory.u's w
-        to the standard (vr - vl) / wheel_base convention; must match
-        BeaverbotControl's ~angular_velocity_sign (see MPC).
         """
         super(MPCRLS, self).__init__(
             trajectory, wheel_base, sampling_time, N_horizon=N_horizon,
-            slip=0.0, vr_max=vr_max, vl_max=vl_max, du_max=du_max,
-            angular_velocity_sign=angular_velocity_sign)
+            slip=0.0, vr_max=vr_max, vl_max=vl_max, du_max=du_max)
 
         s0 = np.array([[0.0]])
 

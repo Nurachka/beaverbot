@@ -78,9 +78,6 @@ class BeaverbotControl(object):
         self._trajectory_type = rospy.get_param(
             "~trajectory_type", "derivative")
 
-        self._angular_velocity_sign = rospy.get_param(
-            "~angular_velocity_sign", -1)
-
         self._mpc_horizon = rospy.get_param(
             "~mpc_horizon", 10)
 
@@ -126,16 +123,14 @@ class BeaverbotControl(object):
                 trajectory, self._length_base, self._sampling_time,
                 N_horizon=self._mpc_horizon, slip=self._mpc_slip,
                 vr_max=self._mpc_vr_max, vl_max=self._mpc_vl_max,
-                du_max=self._mpc_du_max,
-                angular_velocity_sign=self._angular_velocity_sign)
+                du_max=self._mpc_du_max)
 
         elif self._controller_type == "mpc_rls":
             self._controller = MPCRLS(
                 trajectory, self._length_base, self._sampling_time,
                 N_horizon=self._mpc_horizon,
                 vr_max=self._mpc_vr_max, vl_max=self._mpc_vl_max,
-                du_max=self._mpc_du_max,
-                angular_velocity_sign=self._angular_velocity_sign)
+                du_max=self._mpc_du_max)
         else:
             raise NotImplementedError
 
@@ -343,12 +338,12 @@ class BeaverbotControl(object):
         elif trajectory_type == "wheel":
             u = np.zeros((self._nu, len(data) - initial_index))
 
-            vel_left = np.array(data[initial_index:, 1 + nx: 1 + nx + 1]).reshape(-1)
+            vel_right = np.array(data[initial_index:, 1 + nx: 1 + nx + 1]).reshape(-1)
 
-            vel_right = np.array(data[initial_index:, 1 + nx + 1: 1 + nx + 2]).reshape(-1)
+            vel_left = np.array(data[initial_index:, 1 + nx + 1: 1 + nx + 2]).reshape(-1)
 
             u[0, :] = (vel_right + vel_left) / 2
 
-            u[1, :] = self._angular_velocity_sign * (vel_right - vel_left) / self._length_base
+            u[1, :] = (vel_right - vel_left) / self._length_base
 
         return u
