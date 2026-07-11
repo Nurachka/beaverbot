@@ -31,6 +31,16 @@ class MPC:
     references (vr_ref, vl_ref) are recovered from [v, w], and MPC's own
     wheel-velocity corrections are converted back to [v, w] in the same
     convention before being returned.
+
+    Ignores the caller-supplied `index` (a raw elapsed-tick counter) for
+    tracking purposes. Instead, each call re-derives the reference index
+    from the robot's actual measured position via an incremental
+    nearest-point search over trajectory.x (same technique as
+    PurePursuit._search_target_index), so the error state and horizon
+    are always anchored to where the robot actually is on the path, not
+    to where the schedule assumes it should be. This matters most when
+    slip/saturation causes the robot to fall behind (or get ahead of)
+    the nominal time-parameterized schedule.
     """
     # ==================================================================================================
     # PUBLIC METHODS
@@ -54,28 +64,34 @@ class MPC:
                               N_horizon=N_horizon, vr_max=vr_max, vl_max=vl_max,
                               s=slip, du_max=du_max)
 
+        self._nearest_index = None
+
     def execute(self, state, input, index, delta_t):
         """! Execute the controller
         @param state<list>: The state of the vehicle
-        @param input<list>: The input of the vehicle
-        @param index<int>: The index
+        @param input<list>: The input of the vehicle (unused)
+        @param index<int>: Elapsed-tick counter from the node (unused --
+        see class docstring; kept only for interface compatibility with
+        the other controllers).
         @param delta_t<float>: The time step
         @return<tuple>: The status and control
         """
         last_index = len(self.trajectory.u[0, :]) - 1
 
-        if index >= last_index:
+        nearest_index = self._search_nearest_index(state)
+
+        if nearest_index >= last_index:
             return False, [0, 0]
 
         error_state = self._mpc.compute_error_state(
-            np.array(state, dtype=float), np.array(self.trajectory.x[index], dtype=float))
+            np.array(state, dtype=float), np.array(self.trajectory.x[nearest_index], dtype=float))
 
-        A_list, B_list, vr_ref_horizon, vl_ref_horizon = self._build_horizon(index, last_index)
+        A_list, B_list, vr_ref_horizon, vl_ref_horizon = self._build_horizon(nearest_index, last_index)
 
         delta_vr, delta_vl = self._mpc.solve(
             error_state, A_list, B_list, vr_ref_horizon, vl_ref_horizon)
 
-        vr_ref, vl_ref = self._wheel_velocities(index)
+        vr_ref, vl_ref = self._wheel_velocities(nearest_index)
 
         vr_cmd = vr_ref + delta_vr
 
@@ -90,6 +106,42 @@ class MPC:
     # ==================================================================================================
     # PRIVATE METHODS
     # ==================================================================================================
+    def _search_nearest_index(self, state):
+        """! Find the trajectory index nearest to the robot's current
+        (x, y) position, searching incrementally forward from the
+        previous call's result (safe to call more than once per tick
+        with the same state -- it will not advance further the second
+        time). Falls back to a full search only on the very first call.
+        @param state<list>: The state of the vehicle [x, y, theta]
+        @return<int>: The nearest trajectory index
+        """
+        if self._nearest_index is None:
+            distances = self._distance(self.trajectory.x, state)
+
+            self._nearest_index = int(np.argmin(distances))
+
+            return self._nearest_index
+
+        index = self._nearest_index
+
+        last_index = len(self.trajectory.x) - 1
+
+        this_distance = self._distance(self.trajectory.x[index], state)
+
+        while index < last_index:
+            next_distance = self._distance(self.trajectory.x[index + 1], state)
+
+            if this_distance < next_distance:
+                break
+
+            index += 1
+
+            this_distance = next_distance
+
+        self._nearest_index = index
+
+        return index
+
     def _wheel_velocities(self, index):
         """! Recover the raw right/left wheel-velocity references at the
         given trajectory index from trajectory.u = [v, w] (see class
@@ -137,3 +189,26 @@ class MPC:
             vl_ref_horizon.append(vl_ref)
 
         return A_list, B_list, vr_ref_horizon, vl_ref_horizon
+
+    # ==================================================================================================
+    # STATIC METHODS
+    # ==================================================================================================
+    @staticmethod
+    def _distance(reference_x, current_x):
+        """! Euclidean (x, y) distance between trajectory point(s) and
+        the current state (same convention as
+        PurePursuit._calculate_distance).
+        @param reference_x<np.ndarray>: One trajectory row [x, y, theta]
+        or the full (N, 3) trajectory.x array
+        @param current_x<list>: The current state [x, y, theta]
+        @return<float or np.ndarray>: Distance(s)
+        """
+        current_x = np.asarray(current_x, dtype=float)
+
+        delta = current_x - reference_x
+
+        x = delta[:, 0] if delta.ndim == 2 else delta[0]
+
+        y = delta[:, 1] if delta.ndim == 2 else delta[1]
+
+        return np.hypot(x, y)

@@ -28,6 +28,12 @@ class MPCRLS(MPC):
 
     Requires the trajectory to be built with trajectory_type="wheel", so
     that trajectory.u[0, :] / trajectory.u[1, :] hold [v, w] (see MPC).
+
+    Like MPC, ignores the caller-supplied `index` and instead uses the
+    nearest-point search (see MPC._search_nearest_index) to pick the
+    reference angular velocity fed into the RLS slip estimate, so the
+    estimate is computed against where the robot actually is rather than
+    the raw elapsed-tick schedule.
     """
     # ==================================================================================================
     # PUBLIC METHODS
@@ -75,33 +81,37 @@ class MPCRLS(MPC):
     def execute(self, state, input, index, delta_t):
         """! Execute the controller
         @param state<list>: The state of the vehicle
-        @param input<list>: The input of the vehicle
-        @param index<int>: The index
+        @param input<list>: The input of the vehicle (unused)
+        @param index<int>: Elapsed-tick counter from the node (unused --
+        see class docstring).
         @param delta_t<float>: The time step
         @return<tuple>: The status and control
         """
         last_index = len(self.trajectory.u[0, :]) - 1
 
-        if index >= last_index:
+        nearest_index = self._search_nearest_index(state)
+
+        if nearest_index >= last_index:
             return False, [0, 0]
 
-        self._update_slip_estimate(state, index, delta_t)
+        self._update_slip_estimate(state, nearest_index, delta_t)
 
         return super(MPCRLS, self).execute(state, input, index, delta_t)
 
     # ==================================================================================================
     # PRIVATE METHODS
     # ==================================================================================================
-    def _update_slip_estimate(self, state, index, delta_t):
+    def _update_slip_estimate(self, state, nearest_index, delta_t):
         """! Update the MPC's slip factor from the online RLS estimate.
         @param state<list>: The state of the vehicle
-        @param index<int>: The current trajectory index
+        @param nearest_index<int>: The trajectory index nearest to the
+        robot's current position (see MPC._search_nearest_index)
         @param delta_t<float>: The time step
         """
         unwrapped_yaw = np.unwrap([state[2]])[0]
 
         if self._yaw_previous is not None:
-            w_ref = self.trajectory.u[1, index]
+            w_ref = self.trajectory.u[1, nearest_index]
 
             self._rls.predict_sim_with_forgetting_factor(
                 yaw=unwrapped_yaw,
