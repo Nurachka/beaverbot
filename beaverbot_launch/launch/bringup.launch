@@ -25,6 +25,11 @@
           <param name="~rotation_angle" value="-90"/>
           <param name="~gps_to_rear_axis" value="0.6"/>
           <param name="~imu_offset" value="0.05"/>
+          <!-- Align published pose with beaverbot_control/trajectories/lemniscate_trajectory.csv's
+               initial state, assuming the robot is placed at that pose before this node starts. -->
+          <param name="~initial_x" value="1.0"/>
+          <param name="~initial_y" value="0.0"/>
+          <param name="~initial_theta" value="1.5786512774347865"/>
         </node>
     </group>
     <group unless = "$(arg simulation)">
@@ -40,6 +45,11 @@
           <param name="~imu_offset" value="-0.18981711362095213"/>
           <param name="~imu_calibration_threshold" value="400"/>
           <param name="~imu_epsilon" value="0.001"/>
+          <!-- Align published pose with beaverbot_control/trajectories/lemniscate_trajectory.csv's
+               initial state, assuming the robot is placed at that pose before this node starts. -->
+          <param name="~initial_x" value="1.0"/>
+          <param name="~initial_y" value="0.0"/>
+          <param name="~initial_theta" value="1.5786512774347865"/>
         </node>
     </group>
 
