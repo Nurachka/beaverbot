@@ -24,6 +24,8 @@ from sensor_msgs.msg import Imu
 from beaverbot_control.pure_pursuit import PurePursuit
 from beaverbot_control.feedforward import FeedForward
 from beaverbot_control.rls_compensator import RLSCompensator
+from beaverbot_control.mpc import MPC
+from beaverbot_control.mpc_rls import MPCRLS
 
 
 class BeaverbotControl(object):
@@ -76,6 +78,24 @@ class BeaverbotControl(object):
         self._trajectory_type = rospy.get_param(
             "~trajectory_type", "derivative")
 
+        self._angular_velocity_sign = rospy.get_param(
+            "~angular_velocity_sign", -1)
+
+        self._mpc_horizon = rospy.get_param(
+            "~mpc_horizon", 10)
+
+        self._mpc_slip = rospy.get_param(
+            "~mpc_slip", 0.0)
+
+        self._mpc_vr_max = rospy.get_param(
+            "~mpc_vr_max", 0.5)
+
+        self._mpc_vl_max = rospy.get_param(
+            "~mpc_vl_max", 0.5)
+
+        self._mpc_du_max = rospy.get_param(
+            "~mpc_du_max", 0.05)
+
         self._state = None
 
         self._nu = 2
@@ -100,6 +120,22 @@ class BeaverbotControl(object):
 
         elif self._controller_type == "rls_compensator":
             self._controller = RLSCompensator(trajectory)
+
+        elif self._controller_type == "mpc":
+            self._controller = MPC(
+                trajectory, self._length_base, self._sampling_time,
+                N_horizon=self._mpc_horizon, slip=self._mpc_slip,
+                vr_max=self._mpc_vr_max, vl_max=self._mpc_vl_max,
+                du_max=self._mpc_du_max,
+                angular_velocity_sign=self._angular_velocity_sign)
+
+        elif self._controller_type == "mpc_rls":
+            self._controller = MPCRLS(
+                trajectory, self._length_base, self._sampling_time,
+                N_horizon=self._mpc_horizon,
+                vr_max=self._mpc_vr_max, vl_max=self._mpc_vl_max,
+                du_max=self._mpc_du_max,
+                angular_velocity_sign=self._angular_velocity_sign)
         else:
             raise NotImplementedError
 
@@ -167,7 +203,7 @@ class BeaverbotControl(object):
         """! Timer callback
         @param event<Event>: The event
         """
-        if not self._state and self._controller_type in ["pure_pursuit", "rls_compensator"]:
+        if not self._state and self._controller_type in ["pure_pursuit", "rls_compensator", "mpc", "mpc_rls"]:
             rospy.logwarn("No current status of the vehicle")
 
             return
@@ -307,10 +343,12 @@ class BeaverbotControl(object):
         elif trajectory_type == "wheel":
             u = np.zeros((self._nu, len(data) - initial_index))
 
-            u[0, :] = (np.array(data[initial_index:, 1 + nx: 1 + nx + 1]) + 
-                       np.array(data[initial_index:, 1 + nx + 1: 1 + nx + 2])).reshape(-1) / 2
+            vel_left = np.array(data[initial_index:, 1 + nx: 1 + nx + 1]).reshape(-1)
 
-            u[1, :] = (np.array(data[initial_index:, 1 + nx: 1 + nx + 1]) - 
-                       np.array(data[initial_index:, 1 + nx + 1: 1 + nx + 2])).reshape(-1) / self._length_base
+            vel_right = np.array(data[initial_index:, 1 + nx + 1: 1 + nx + 2]).reshape(-1)
+
+            u[0, :] = (vel_right + vel_left) / 2
+
+            u[1, :] = self._angular_velocity_sign * (vel_right - vel_left) / self._length_base
 
         return u
