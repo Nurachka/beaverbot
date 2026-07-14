@@ -1,16 +1,19 @@
 <launch>
     <node name="beaverbot_control_node" pkg="beaverbot_control" type="beaverbot_control_node" output="screen">
         <param name="~trajectory_file" value="$(find beaverbot_control)/trajectories/lemniscate_trajectory.csv"/>
-        <!-- <param name="~trajectory_file" value="$(find beaverbot_control)/trajectories/lemniscate_compensated_slip0.1.csv"/>
-        <param name="~trajectory_file" value="$(find beaverbot_control)/trajectories/lemniscate_compensated_slip0.2.csv"/>
-        <param name="~trajectory_file" value="$(find beaverbot_control)/trajectories/lemniscate_compensated_slip0.05.csv"/>
-        <param name="~trajectory_file" value="$(find beaverbot_control)/trajectories/lemniscate_compensated_slip0.15.csv"/>
-        <param name="~trajectory_file" value="$(find beaverbot_control)/trajectories/lemniscate_compensated_slip0.25.csv"/>
-        <param name="~trajectory_file" value="$(find beaverbot_control)/trajectories/lemniscate_compensated_mpc_rls_acc_slip0.1.csv"/>
-        <param name="~trajectory_file" value="$(find beaverbot_control)/trajectories/lemniscate_compensated_mpc_rls_acc_slip0.2.csv"/>
-        <param name="~trajectory_file" value="$(find beaverbot_control)/trajectories/lemniscate_compensated_mpc_rls_acc_slip0.05.csv"/>
-        <param name="~trajectory_file" value="$(find beaverbot_control)/trajectories/lemniscate_compensated_mpc_rls_acc_slip0.15.05.csv"/>
-        <param name="~trajectory_file" value="$(find beaverbot_control)/trajectories/lemniscate_compensated_mpc_rls_acc_slip0.25.csv"/> -->
+        <!-- <param name="~trajectory_file" value="$(find beaverbot_control)/trajectories/lemniscate_compensated_slip0.1.csv"/> -->
+        <!-- <param name="~trajectory_file" value="$(find beaverbot_control)/trajectories/lemniscate_compensated_slip0.2.csv"/> -->
+        <!-- <param name="~trajectory_file" value="$(find beaverbot_control)/trajectories/lemniscate_compensated_slip0.05.csv"/> -->
+        <!-- <param name="~trajectory_file" value="$(find beaverbot_control)/trajectories/lemniscate_compensated_slip0.15.csv"/> -->
+        <!-- <param name="~trajectory_file" value="$(find beaverbot_control)/trajectories/lemniscate_compensated_slip0.17.csv"/> -->
+        <!-- <param name="~trajectory_file" value="$(find beaverbot_control)/trajectories/lemniscate_compensated_slip0.18.csv"/> -->
+        <!-- <param name="~trajectory_file" value="$(find beaverbot_control)/trajectories/lemniscate_compensated_slip0.19.csv"/> -->
+        <!-- <param name="~trajectory_file" value="$(find beaverbot_control)/trajectories/lemniscate_compensated_slip0.25.csv"/> -->
+        <!-- <param name="~trajectory_file" value="$(find beaverbot_control)/trajectories/lemniscate_compensated_mpc_rls_acc_slip0.1.csv"/> -->
+        <!-- <param name="~trajectory_file" value="$(find beaverbot_control)/trajectories/lemniscate_compensated_mpc_rls_acc_slip0.2.csv"/> -->
+        <!-- <param name="~trajectory_file" value="$(find beaverbot_control)/trajectories/lemniscate_compensated_mpc_rls_acc_slip0.05.csv"/> -->
+        <!-- <param name="~trajectory_file" value="$(find beaverbot_control)/trajectories/lemniscate_compensated_mpc_rls_acc_slip0.15.csv"/> -->
+        <!-- <param name="~trajectory_file" value="$(find beaverbot_control)/trajectories/lemniscate_compensated_mpc_rls_acc_slip0.25.csv"/> -->
         <param name="~sampling_time" value="0.05"/>
 
         <!-- trajectory_type="wheel" reads columns 5/6 of the CSV as right_vel,left_vel (this
