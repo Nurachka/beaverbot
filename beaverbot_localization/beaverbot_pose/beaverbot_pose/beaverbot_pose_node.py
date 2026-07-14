@@ -93,6 +93,14 @@ class BeaverbotPoseNode:
         self._initial_theta = rospy.get_param(
             "~initial_theta", 0.0)
 
+        self._imu_calibration_timeout = rospy.get_param(
+            "~imu_calibration_timeout", 15.0)
+
+        rospy.loginfo(
+            "beaverbot_pose_node initial pose params: "
+            f"initial_x={self._initial_x}, initial_y={self._initial_y}, "
+            f"initial_theta={self._initial_theta}")
+
     def _register_subscribers(self):
         """! Register ROS subscribers method
         """
@@ -159,6 +167,11 @@ class BeaverbotPoseNode:
 
         self._initial_lon = first_gps_mess.longitude
 
+        rospy.loginfo(
+            "beaverbot_pose_node first GPS fix: "
+            f"lat={first_gps_mess.latitude}, lon={first_gps_mess.longitude}, "
+            f"status={first_gps_mess.status.status}")
+
     # def _get_initial_orientation(self):
     #     """! Get initial orientation
     #     THis method will guarantee that data from IMU is received before
@@ -180,7 +193,8 @@ class BeaverbotPoseNode:
 
         subtracted_values = []
 
-        while not rospy.is_shutdown() and (time.time() - start_time < 1):
+        while not rospy.is_shutdown() and \
+                (time.time() - start_time < self._imu_calibration_timeout):
             try:
                 data = rospy.wait_for_message(
                     "/imu", Imu, timeout=1.0)
