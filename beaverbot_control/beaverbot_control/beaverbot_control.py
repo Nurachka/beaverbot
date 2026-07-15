@@ -155,8 +155,10 @@ class BeaverbotControl(object):
         """
         rospy.Subscriber("odom", Odometry,
                          self._odom_callback)
-        rospy.Subscriber("/imu/data_raw", Imu,
-                         self._imu_callback)
+
+        if self._controller_type not in ["mpc", "mpc_rls"]:
+            rospy.Subscriber("/imu/data_raw", Imu,
+                             self._imu_callback)
 
     def _register_publishers(self):
         """! Register publisher
@@ -207,8 +209,9 @@ class BeaverbotControl(object):
         heading = Rotation.from_quat(quaternion).as_euler(
             "zyx", degrees=False)[0]
 
-        self._state = [0, 0,
-                       heading]
+        x, y = (self._state[0], self._state[1]) if self._state else (0, 0)
+
+        self._state = [x, y, heading]
 
     def _timer_callback(self, event):
         """! Timer callback
