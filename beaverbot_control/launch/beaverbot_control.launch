@@ -44,7 +44,7 @@
              ~mpc_log_file (default unset, applies to both mpc and mpc_rls): when set to a path,
              records index/nearest_index/delta_t/state(x,y,theta)/target(ref x,y,theta)/
              error(x,y,theta)/vr_ref/vl_ref/delta_vr/delta_vl/vr_cmd/vl_cmd/v/w/solver_status
-             to CSV each step -- useful for diagnosing tracking issues (e.g. the robot turning
+             to CSV each step useful for diagnosing tracking issues (e.g. the robot turning
              and driving the wrong way) by inspecting the target position and error at the
              moment it happens. -->
         <param name="~controller_type" value="mpc"/>
