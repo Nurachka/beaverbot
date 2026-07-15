@@ -10,6 +10,9 @@
 #
 # Copyright (c) 2024 System Engineering Laboratory.  All rights reserved.
 
+# Standard library
+import csv
+
 # External library
 import numpy as np
 
@@ -46,7 +49,7 @@ class MPC:
     # PUBLIC METHODS
     # ==================================================================================================
     def __init__(self, trajectory, wheel_base, sampling_time, N_horizon=10,
-                 slip=0.0, vr_max=0.5, vl_max=0.5, du_max=0.05):
+                 slip=0.0, vr_max=0.5, vl_max=0.5, du_max=0.05, log_file=None):
         """! Constructor
         @param trajectory<instance>: The trajectory
         @param wheel_base<float>: Distance between the wheels of the robot.
@@ -57,6 +60,10 @@ class MPC:
         @param vl_max<float>: Maximum velocity of the left wheel.
         @param du_max<float>: Maximum allowed change in each wheel's
         delta-velocity per step.
+        @param log_file<str or None>: If set, the path of a CSV file to
+        record the tracking state (target position, error, MPC output,
+        solver status) at every step, for offline analysis. Recording is
+        disabled when None.
         """
         self.trajectory = trajectory
 
@@ -65,6 +72,18 @@ class MPC:
                               s=slip, du_max=du_max)
 
         self._nearest_index = None
+
+        self.log_file = log_file
+
+        if self.log_file:
+            with open(self.log_file, mode="w", newline="") as file:
+                writer = csv.writer(file)
+                writer.writerow(["index", "nearest_index", "delta_t",
+                                  "state_x", "state_y", "state_theta",
+                                  "ref_x", "ref_y", "ref_theta",
+                                  "error_x", "error_y", "error_theta",
+                                  "vr_ref", "vl_ref", "delta_vr", "delta_vl",
+                                  "vr_cmd", "vl_cmd", "v", "w", "solver_status"])
 
     def execute(self, state, input, index, delta_t):
         """! Execute the controller
@@ -83,8 +102,10 @@ class MPC:
         if nearest_index >= last_index:
             return False, [0, 0]
 
+        reference_state = np.array(self.trajectory.x[nearest_index], dtype=float)
+
         error_state = self._mpc.compute_error_state(
-            np.array(state, dtype=float), np.array(self.trajectory.x[nearest_index], dtype=float))
+            np.array(state, dtype=float), reference_state)
 
         A_list, B_list, vr_ref_horizon, vl_ref_horizon = self._build_horizon(nearest_index, last_index)
 
@@ -101,11 +122,48 @@ class MPC:
 
         w = (vr_cmd - vl_cmd) / self._mpc.l
 
+        self._record_step(index, nearest_index, delta_t, state, reference_state,
+                          error_state, vr_ref, vl_ref, delta_vr, delta_vl,
+                          vr_cmd, vl_cmd, v, w, self._mpc.problem.status)
+
         return True, [v, w]
 
     # ==================================================================================================
     # PRIVATE METHODS
     # ==================================================================================================
+    def _record_step(self, index, nearest_index, delta_t, state, reference_state,
+                      error_state, vr_ref, vl_ref, delta_vr, delta_vl,
+                      vr_cmd, vl_cmd, v, w, solver_status):
+        """! Append one row of the current tracking state to log_file.
+        @param index<int>: The elapsed-tick counter from the node
+        @param nearest_index<int>: The trajectory index actually tracked
+        @param delta_t<float>: The time step
+        @param state<list>: The actual state of the vehicle [x, y, theta]
+        @param reference_state<np.ndarray>: The target state [x, y, theta]
+        at nearest_index
+        @param error_state<np.ndarray>: The error state [x, y, theta]
+        (state - reference_state, theta wrapped to [-pi, pi])
+        @param vr_ref<float>: Reference right wheel velocity
+        @param vl_ref<float>: Reference left wheel velocity
+        @param delta_vr<float>: MPC correction to the right wheel velocity
+        @param delta_vl<float>: MPC correction to the left wheel velocity
+        @param vr_cmd<float>: Commanded right wheel velocity (vr_ref + delta_vr)
+        @param vl_cmd<float>: Commanded left wheel velocity (vl_ref + delta_vl)
+        @param v<float>: The commanded linear velocity
+        @param w<float>: The commanded angular velocity
+        @param solver_status<str>: The cvxpy solver status for this step
+        """
+        if not self.log_file:
+            return
+        with open(self.log_file, mode="a", newline="") as file:
+            writer = csv.writer(file)
+            writer.writerow([index, nearest_index, delta_t,
+                              state[0], state[1], state[2],
+                              reference_state[0], reference_state[1], reference_state[2],
+                              error_state[0], error_state[1], error_state[2],
+                              vr_ref, vl_ref, delta_vr, delta_vl,
+                              vr_cmd, vl_cmd, v, w, solver_status])
+
     def _search_nearest_index(self, state):
         """! Find the trajectory index nearest to the robot's current
         (x, y) position, searching incrementally forward from the

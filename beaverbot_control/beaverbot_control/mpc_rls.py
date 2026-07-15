@@ -40,7 +40,7 @@ class MPCRLS(MPC):
     # ==================================================================================================
     def __init__(self, trajectory, wheel_base, sampling_time, N_horizon=10,
                  vr_max=0.5, vl_max=0.5, du_max=0.05,
-                 warmup_steps=50, slip_clip=0.5, lam=0.96):
+                 warmup_steps=50, slip_clip=0.5, lam=0.96, log_file=None):
         """! Constructor
         @param trajectory<instance>: The trajectory
         @param wheel_base<float>: Distance between the wheels of the robot.
@@ -55,10 +55,13 @@ class MPCRLS(MPC):
         @param slip_clip<float>: The estimated slip is clipped to
         [-slip_clip, slip_clip].
         @param lam<float>: Forgetting factor used by the RLS estimator.
+        @param log_file<str or None>: If set, the path of a CSV file to
+        record the tracking state at every step (see MPC.__init__).
         """
         super(MPCRLS, self).__init__(
             trajectory, wheel_base, sampling_time, N_horizon=N_horizon,
-            slip=0.0, vr_max=vr_max, vl_max=vl_max, du_max=du_max)
+            slip=0.0, vr_max=vr_max, vl_max=vl_max, du_max=du_max,
+            log_file=log_file)
 
         s0 = np.array([[0.0]])
 

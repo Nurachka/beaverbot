@@ -93,6 +93,9 @@ class BeaverbotControl(object):
         self._mpc_du_max = rospy.get_param(
             "~mpc_du_max", 0.05)
 
+        self._mpc_log_file = rospy.get_param(
+            "~mpc_log_file", None)
+
         self._rls_use_forgetting_factor = rospy.get_param(
             "~rls_use_forgetting_factor", True)
 
@@ -136,14 +139,14 @@ class BeaverbotControl(object):
                 trajectory, self._length_base, self._sampling_time,
                 N_horizon=self._mpc_horizon, slip=self._mpc_slip,
                 vr_max=self._mpc_vr_max, vl_max=self._mpc_vl_max,
-                du_max=self._mpc_du_max)
+                du_max=self._mpc_du_max, log_file=self._mpc_log_file)
 
         elif self._controller_type == "mpc_rls":
             self._controller = MPCRLS(
                 trajectory, self._length_base, self._sampling_time,
                 N_horizon=self._mpc_horizon,
                 vr_max=self._mpc_vr_max, vl_max=self._mpc_vl_max,
-                du_max=self._mpc_du_max)
+                du_max=self._mpc_du_max, log_file=self._mpc_log_file)
         else:
             raise NotImplementedError
 
