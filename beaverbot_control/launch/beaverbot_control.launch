@@ -28,8 +28,16 @@
         <!-- <param name="~controller_type" value="feedforward"/> -->
 
         <!-- 2) rls_compensator: estimates wheel slip online (RLS) and scales up the reference
-             velocities by 1/(1-slip); no MPC/prediction, just a velocity multiplier. -->
+             velocities by 1/(1-slip); no MPC/prediction, just a velocity multiplier.
+             Tune via ~rls_use_forgetting_factor (default true; set false to use plain
+             predict_sim instead of predict_sim_with_forgetting_factor), ~rls_forgetting_factor
+             (default 0.98, only used when ~rls_use_forgetting_factor is true), and
+             ~rls_log_file (default unset; when set to a path, records index/delta_t/yaw/
+             yaw_previous/angular_velocity/raw_slip/clipped_slip/v/w to CSV each step). -->
         <!-- <param name="~controller_type" value="rls_compensator"/> -->
+        <!-- <param name="~rls_use_forgetting_factor" value="true"/> -->
+        <!-- <param name="~rls_forgetting_factor" value="0.98"/> -->
+        <!-- <param name="~rls_log_file" value="$(find beaverbot_control)/logs/rls_slip.csv"/> -->
 
         <!-- 3) mpc: linear MPC tracking the reference trajectory, fixed/known slip factor
              (~mpc_slip, default 0.0). Tune via ~mpc_horizon, ~mpc_vr_max, ~mpc_vl_max, ~mpc_du_max. -->

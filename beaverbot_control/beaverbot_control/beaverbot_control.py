@@ -93,6 +93,15 @@ class BeaverbotControl(object):
         self._mpc_du_max = rospy.get_param(
             "~mpc_du_max", 0.05)
 
+        self._rls_use_forgetting_factor = rospy.get_param(
+            "~rls_use_forgetting_factor", True)
+
+        self._rls_forgetting_factor = rospy.get_param(
+            "~rls_forgetting_factor", 0.98)
+
+        self._rls_log_file = rospy.get_param(
+            "~rls_log_file", None)
+
         self._state = None
 
         self._nu = 2
@@ -116,7 +125,11 @@ class BeaverbotControl(object):
             self._controller = FeedForward(trajectory)
 
         elif self._controller_type == "rls_compensator":
-            self._controller = RLSCompensator(trajectory)
+            self._controller = RLSCompensator(
+                trajectory,
+                use_forgetting_factor=self._rls_use_forgetting_factor,
+                forgetting_factor=self._rls_forgetting_factor,
+                log_file=self._rls_log_file)
 
         elif self._controller_type == "mpc":
             self._controller = MPC(
