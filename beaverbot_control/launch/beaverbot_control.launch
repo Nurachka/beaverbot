@@ -50,6 +50,16 @@
         <param name="~controller_type" value="mpc"/>
         <!-- <param name="~mpc_log_file" value="$(find beaverbot_control)/logs/mpc_tracking.csv"/> -->
 
+        <!-- Trial increase from the 0.5 m/s default: turn-tracking logs (data/20260717201300)
+             showed vr_cmd/vl_cmd pinned at the 0.5 m/s ceiling ~64% of turn-ticks, which lags
+             the desired correction and shows up as overshoot once the turn catches up. True
+             top speed isn't known, so this is a conservative +20% step to test with, not a
+             final value; watch for wheel slip / motor faults and dial back if it's too much.
+             ~mpc_du_max (slew-rate limit) also saturates often during turns but is left at its
+             default 0.05 here so this is a single-variable test. -->
+        <param name="~mpc_vr_max" value="0.6"/>
+        <param name="~mpc_vl_max" value="0.6"/>
+
         <!-- 4) mpc_rls: same MPC as above, but the slip factor is estimated online (RLS) each
              step instead of being fixed via ~mpc_slip. Same ~mpc_horizon/~mpc_vr_max/~mpc_vl_max/
              ~mpc_du_max/~mpc_log_file tuning params apply. -->

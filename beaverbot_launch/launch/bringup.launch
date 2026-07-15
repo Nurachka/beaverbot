@@ -6,6 +6,11 @@
     <arg name="rvizconfig" default="$(find beaverbot_description)/rviz/urdf.rviz"/>
     <arg name="model" default="$(find beaverbot_description)/urdf/beaverbot.urdf.xacro"/> -->
     <arg name="rosbag_name" default="$(find beaverbot_launch)/rosbags/data.bag"/>
+    <!-- Toggle beaverbot_pose_node's between-GPS-fixes dead-reckoning: true = predicted
+         position every publish (default), false = raw last-fix position, held stale
+         between ~1 Hz GPS fixes (pre-dead-reckoning behavior). Override on the CLI with
+         e.g. `enable_position_prediction:=false`. -->
+    <arg name="enable_position_prediction" default="true"/>
 
     <!-- <param name="robot_description" command="$(find xacro)/xacro $(arg model)"/>
    
@@ -22,6 +27,7 @@
           <param name="~log" value="false"/>
           <param name="~log_folder" value="$(find beaverbot_pose)/log_data"/>
           <param name="~publish_rate" value="0.05"/>
+          <param name="~enable_position_prediction" value="$(arg enable_position_prediction)"/>
           <param name="~rotation_angle" value="179"/>
           <param name="~gps_to_rear_axis" value="0.6"/>
           <param name="~imu_offset" value="0.05"/>
@@ -40,6 +46,7 @@
           <param name="~log" value="true"/>
           <param name="~log_folder" value="$(find beaverbot_pose)/log_data"/>
           <param name="~publish_rate" value="0.05"/>
+          <param name="~enable_position_prediction" value="$(arg enable_position_prediction)"/>
           <param name="~rotation_angle" value="179"/>
           <param name="~gps_to_rear_axis" value="0.0"/>
           <param name="~imu_offset" value="-0.18981711362095213"/>

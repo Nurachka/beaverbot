@@ -102,6 +102,9 @@ class BeaverbotPoseNode:
 
         self._velocity_y = 0.0
 
+        self._enable_position_prediction = rospy.get_param(
+            "~enable_position_prediction", True)
+
         self._max_extrapolation_speed = rospy.get_param(
             "~max_extrapolation_speed", 0.5)
 
@@ -340,9 +343,12 @@ class BeaverbotPoseNode:
         velocity * ~extrapolation_time_constant instead of growing
         linearly with dt, so a stale/wrong velocity estimate can't keep
         accumulating error the longer it's been since the last fix.
+        Disabled via ~enable_position_prediction (default true) -- when
+        false, returns the raw last-fix position unchanged, i.e. the
+        pre-dead-reckoning behavior.
         @return<tuple>: The predicted (x_rear, y_rear)
         """
-        if self._last_gps_time is None:
+        if not self._enable_position_prediction or self._last_gps_time is None:
             return self._x_rear, self._y_rear
 
         dt = (rospy.Time.now() - self._last_gps_time).to_sec()
