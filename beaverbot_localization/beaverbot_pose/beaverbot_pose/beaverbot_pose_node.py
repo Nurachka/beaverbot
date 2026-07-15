@@ -102,6 +102,12 @@ class BeaverbotPoseNode:
 
         self._velocity_y = 0.0
 
+        self._max_extrapolation_speed = rospy.get_param(
+            "~max_extrapolation_speed", 0.5)
+
+        self._extrapolation_time_constant = rospy.get_param(
+            "~extrapolation_time_constant", 0.5)
+
         rospy.loginfo(
             "beaverbot_pose_node initial pose params: "
             f"initial_x={self._initial_x}, initial_y={self._initial_y}, "
@@ -323,6 +329,17 @@ class BeaverbotPoseNode:
         frozen for several consecutive publishes after every fix. Yaw
         (from IMU) is not similarly delayed -- _imu_callback updates it
         on every IMU message, independent of this method.
+
+        The fix-to-fix velocity estimate assumes constant velocity over
+        the whole ~1 s gap, which breaks down during sharp turns (speed
+        and heading both change quickly), producing a stale extrapolated
+        position that then "snaps" to the true one once the next fix
+        corrects it. To bound that: the extrapolation speed is clamped to
+        ~max_extrapolation_speed (a physically plausible bound), and the
+        displacement is a first-order lag that saturates toward
+        velocity * ~extrapolation_time_constant instead of growing
+        linearly with dt, so a stale/wrong velocity estimate can't keep
+        accumulating error the longer it's been since the last fix.
         @return<tuple>: The predicted (x_rear, y_rear)
         """
         if self._last_gps_time is None:
@@ -330,9 +347,26 @@ class BeaverbotPoseNode:
 
         dt = (rospy.Time.now() - self._last_gps_time).to_sec()
 
-        x = self._x_rear + self._velocity_x * dt
+        speed = math.hypot(self._velocity_x, self._velocity_y)
 
-        y = self._y_rear + self._velocity_y * dt
+        if speed > self._max_extrapolation_speed and speed > 0:
+            scale = self._max_extrapolation_speed / speed
+
+            vx = self._velocity_x * scale
+
+            vy = self._velocity_y * scale
+
+        else:
+            vx = self._velocity_x
+
+            vy = self._velocity_y
+
+        weight = self._extrapolation_time_constant * \
+            (1 - math.exp(-dt / self._extrapolation_time_constant))
+
+        x = self._x_rear + vx * weight
+
+        y = self._y_rear + vy * weight
 
         return x, y
 
