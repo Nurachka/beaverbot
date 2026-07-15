@@ -96,6 +96,12 @@ class BeaverbotPoseNode:
         self._imu_calibration_timeout = rospy.get_param(
             "~imu_calibration_timeout", 15.0)
 
+        self._last_gps_time = None
+
+        self._velocity_x = 0.0
+
+        self._velocity_y = 0.0
+
         rospy.loginfo(
             "beaverbot_pose_node initial pose params: "
             f"initial_x={self._initial_x}, initial_y={self._initial_y}, "
@@ -254,11 +260,27 @@ class BeaverbotPoseNode:
             data.latitude, data.longitude,
             self._initial_lat, self._initial_lon)
 
-        self._x_rear = self._x_gps - self._gps_to_rear_axis * \
+        x_rear = self._x_gps - self._gps_to_rear_axis * \
             math.cos(self._yaw) + self._initial_x
 
-        self._y_rear = self._y_gps - self._gps_to_rear_axis * \
+        y_rear = self._y_gps - self._gps_to_rear_axis * \
             math.sin(self._yaw) + self._initial_y
+
+        now = rospy.Time.now()
+
+        if self._last_gps_time is not None:
+            dt = (now - self._last_gps_time).to_sec()
+
+            if dt > 1e-3:
+                self._velocity_x = (x_rear - self._x_rear) / dt
+
+                self._velocity_y = (y_rear - self._y_rear) / dt
+
+        self._x_rear = x_rear
+
+        self._y_rear = y_rear
+
+        self._last_gps_time = now
 
     def _imu_callback(self, data: Imu):
         """! IMU callback method
@@ -293,16 +315,39 @@ class BeaverbotPoseNode:
          self.quaternion_z, self.quaternion_w) = tf.transformations. \
             quaternion_from_euler(0, 0, self._yaw)
 
+    def _predict_pose(self):
+        """! Dead-reckon (x_rear, y_rear) forward from the last GPS fix to
+        now, using the velocity estimated between the last two fixes.
+        /fix only publishes at ~1 Hz, far slower than this node's publish
+        timer, so without this the published odom position would stay
+        frozen for several consecutive publishes after every fix. Yaw
+        (from IMU) is not similarly delayed -- _imu_callback updates it
+        on every IMU message, independent of this method.
+        @return<tuple>: The predicted (x_rear, y_rear)
+        """
+        if self._last_gps_time is None:
+            return self._x_rear, self._y_rear
+
+        dt = (rospy.Time.now() - self._last_gps_time).to_sec()
+
+        x = self._x_rear + self._velocity_x * dt
+
+        y = self._y_rear + self._velocity_y * dt
+
+        return x, y
+
     def _publish_rear_wheel_odometry(self, timer):
         """! Publish rear wheel pose method
         @param timer: Timer (unused)
         """
+        x_rear, y_rear = self._predict_pose()
+
         rear_odom_msg = Odometry()
         rear_odom_msg.header.stamp = rospy.get_rostime()
         rear_odom_msg.header.frame_id = "base_link"
 
-        rear_odom_msg.pose.pose.position.x = self._x_rear
-        rear_odom_msg.pose.pose.position.y = self._y_rear
+        rear_odom_msg.pose.pose.position.x = x_rear
+        rear_odom_msg.pose.pose.position.y = y_rear
         rear_odom_msg.pose.pose.position.z = 0.0
         rear_odom_msg.pose.pose.orientation.x = self.quaternion_x
         rear_odom_msg.pose.pose.orientation.y = self.quaternion_y
@@ -316,7 +361,7 @@ class BeaverbotPoseNode:
         self._rear_odom_pub.publish(rear_odom_msg)
 
         self._tf_broadcaster.sendTransform(
-            (self._x_rear, self._y_rear, 0),
+            (x_rear, y_rear, 0),
             (self.quaternion_x, self.quaternion_y,
              self.quaternion_z, self.quaternion_w),
             rospy.Time.now(),
