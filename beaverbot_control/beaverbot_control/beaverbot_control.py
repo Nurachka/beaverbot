@@ -18,7 +18,6 @@ import numpy as np
 from nav_msgs.msg import Odometry, Path
 from scipy.spatial.transform import Rotation
 from geometry_msgs.msg import Twist, PoseStamped
-from sensor_msgs.msg import Imu
 
 # Internal library
 from beaverbot_control.pure_pursuit import PurePursuit
@@ -96,6 +95,9 @@ class BeaverbotControl(object):
         self._mpc_log_file = rospy.get_param(
             "~mpc_log_file", None)
 
+        self._mpc_rls_forgetting_factor = rospy.get_param(
+            "~mpc_rls_forgetting_factor", 0.96)
+
         self._rls_use_forgetting_factor = rospy.get_param(
             "~rls_use_forgetting_factor", True)
 
@@ -146,7 +148,8 @@ class BeaverbotControl(object):
                 trajectory, self._length_base, self._sampling_time,
                 N_horizon=self._mpc_horizon,
                 vr_max=self._mpc_vr_max, vl_max=self._mpc_vl_max,
-                du_max=self._mpc_du_max, log_file=self._mpc_log_file)
+                du_max=self._mpc_du_max, log_file=self._mpc_log_file,
+                lam=self._mpc_rls_forgetting_factor)
         else:
             raise NotImplementedError
 
@@ -156,9 +159,15 @@ class BeaverbotControl(object):
         rospy.Subscriber("odom", Odometry,
                          self._odom_callback)
 
-        if self._controller_type not in ["mpc", "mpc_rls"]:
-            rospy.Subscriber("/imu/data_raw", Imu,
-                             self._imu_callback)
+        # _imu_callback is intentionally never registered here anymore, for
+        # any controller type. It used to be needed because the real robot
+        # had no odometry, only raw IMU orientation -- but odom is now
+        # beaverbot_pose_node's fused GPS+IMU pose (see beaverbot_pose_node.py),
+        # which already applies a live-calibrated IMU offset. Also
+        # subscribing here to the raw, uncorrected /imu topic and writing
+        # both to the same self._state made heading alternate between the
+        # two (offset by whatever that calibration happened to be), which
+        # was corrupting yaw-diff-based estimators like RLSCompensator.
 
     def _register_publishers(self):
         """! Register publisher
@@ -193,25 +202,6 @@ class BeaverbotControl(object):
         self._state = [msg.pose.pose.position.x,
                        msg.pose.pose.position.y,
                        heading]
-    
-    def _imu_callback(self, msg):
-        """
-        Imu callback, bacause the real robot does not have odometry
-        it has only Imu to read orientation
-        """
-        quaternion = (
-            msg.orientation.x,
-            msg.orientation.y,
-            msg.orientation.z,
-            msg.orientation.w,
-        )
-
-        heading = Rotation.from_quat(quaternion).as_euler(
-            "zyx", degrees=False)[0]
-
-        x, y = (self._state[0], self._state[1]) if self._state else (0, 0)
-
-        self._state = [x, y, heading]
 
     def _timer_callback(self, event):
         """! Timer callback

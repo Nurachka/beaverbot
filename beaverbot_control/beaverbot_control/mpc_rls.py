@@ -30,17 +30,24 @@ class MPCRLS(MPC):
     that trajectory.u[0, :] / trajectory.u[1, :] hold [v, w] (see MPC).
 
     Like MPC, ignores the caller-supplied `index` and instead uses the
-    nearest-point search (see MPC._search_nearest_index) to pick the
-    reference angular velocity fed into the RLS slip estimate, so the
-    estimate is computed against where the robot actually is rather than
-    the raw elapsed-tick schedule.
+    nearest-point search (see MPC._search_nearest_index) for tracking.
+
+    The RLS slip estimate is regressed against the angular velocity that
+    was actually commanded on the *previous* tick (self._last_w_cmd, the
+    w returned by the previous execute() call, including that tick's MPC
+    feedback correction) rather than the raw reference angular velocity at
+    the current nearest_index -- the estimator's model assumes its input
+    reflects what was truly applied to the vehicle, so feeding it the
+    reference instead would bias the estimate whenever the applied command
+    differs from the reference (which is always, once the MPC is actively
+    correcting).
     """
     # ==================================================================================================
     # PUBLIC METHODS
     # ==================================================================================================
     def __init__(self, trajectory, wheel_base, sampling_time, N_horizon=10,
                  vr_max=0.5, vl_max=0.5, du_max=0.05,
-                 warmup_steps=50, slip_clip=0.5, lam=0.96, log_file=None):
+                 warmup_steps=50, slip_clip=0.3, lam=0.96, log_file=None):
         """! Constructor
         @param trajectory<instance>: The trajectory
         @param wheel_base<float>: Distance between the wheels of the robot.
@@ -81,6 +88,8 @@ class MPCRLS(MPC):
 
         self._step = 0
 
+        self._last_w_cmd = None
+
     def execute(self, state, input, index, delta_t):
         """! Execute the controller
         @param state<list>: The state of the vehicle
@@ -97,31 +106,42 @@ class MPCRLS(MPC):
         if nearest_index >= last_index:
             return False, [0, 0]
 
-        self._update_slip_estimate(state, nearest_index, delta_t)
+        self._update_slip_estimate(state, delta_t)
 
-        return super(MPCRLS, self).execute(state, input, index, delta_t)
+        status, u = super(MPCRLS, self).execute(state, input, index, delta_t)
+
+        # w actually commanded this tick (includes the MPC's own feedback
+        # correction, not just the raw reference) -- see _update_slip_estimate.
+        self._last_w_cmd = u[1]
+
+        return status, u
 
     # ==================================================================================================
     # PRIVATE METHODS
     # ==================================================================================================
-    def _update_slip_estimate(self, state, nearest_index, delta_t):
+    def _update_slip_estimate(self, state, delta_t):
         """! Update the MPC's slip factor from the online RLS estimate.
         @param state<list>: The state of the vehicle
-        @param nearest_index<int>: The trajectory index nearest to the
-        robot's current position (see MPC._search_nearest_index)
         @param delta_t<float>: The time step
         """
         unwrapped_yaw = np.unwrap([state[2]])[0]
 
-        if self._yaw_previous is not None:
-            w_ref = self.trajectory.u[1, nearest_index]
-
+        if self._yaw_previous is not None and self._last_w_cmd is not None:
+            # The yaw change observed now is the effect of what was actually
+            # commanded last tick (self._last_w_cmd) -- not the raw reference
+            # angular velocity at the current nearest_index, which is what
+            # was fed here previously. Using the raw reference instead of the
+            # real applied command biases the estimate: any MPC correction
+            # (or slip compensation elsewhere) that made the applied command
+            # differ from the reference goes uncredited, systematically
+            # pulling the slip estimate away from the true value.
             self._rls.predict_sim_with_forgetting_factor(
                 yaw=unwrapped_yaw,
                 yaw_previous=self._yaw_previous,
-                ground_angular_velocity_z=w_ref,
+                ground_angular_velocity_z=self._last_w_cmd,
                 delta_t=delta_t,
-                lam=self._lam)
+                lam=self._lam,
+                position=(state[0], state[1]))
 
         self._yaw_previous = unwrapped_yaw
 

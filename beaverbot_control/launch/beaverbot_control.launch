@@ -62,11 +62,12 @@
 
         <!-- 4) mpc_rls: same MPC as above, but the slip factor is estimated online (RLS) each
              step instead of being fixed via ~mpc_slip. Same ~mpc_horizon/~mpc_vr_max/~mpc_vl_max/
-             ~mpc_du_max/~mpc_log_file tuning params apply. -->
+             ~mpc_du_max/~mpc_log_file tuning params apply, plus ~mpc_rls_forgetting_factor
+             (default 0.96) for the RLS forgetting factor used by its slip estimator. -->
         <!-- <param name="~controller_type" value="mpc_rls"/> -->
+        <!-- <param name="~mpc_rls_forgetting_factor" value="0.96"/> -->
 
         <remap from="cmd_vel" to="/cmd_vel"/>
         <remap from="odom" to="/ground_truth/odom"/>
-        <remap from="imu/data_raw" to="imu"/>
     </node>
 </launch>
