@@ -108,6 +108,13 @@ class BeaverbotPoseNode:
         self._max_extrapolation_speed = rospy.get_param(
             "~max_extrapolation_speed", 0.5)
 
+        self._max_imu_yaw_rate = rospy.get_param(
+            "~max_imu_yaw_rate", 5.0)
+
+        self._last_good_yaw = None
+
+        self._last_imu_time = None
+
         self._extrapolation_time_constant = rospy.get_param(
             "~extrapolation_time_constant", 0.5)
 
@@ -296,12 +303,23 @@ class BeaverbotPoseNode:
         @param data: Imu message
         @return: yaw
         @ yaw: The yaw angle of the robot
-        """
-        self.quaternion_x = data.orientation.x
-        self.quaternion_y = data.orientation.y
-        self.quaternion_z = data.orientation.z
-        self.quaternion_w = data.orientation.w
 
+        The IMU has been observed to intermittently freeze (repeat the
+        exact same message, including angular_velocity/linear_acceleration,
+        for anywhere from a fraction of a second up to several seconds)
+        and then snap to a new orientation once it recovers -- a driver/
+        hardware fault, not something fixable here. What this guards
+        against: the snap itself implies a physically impossible yaw rate
+        (tens of rad/s, versus this robot's real ~2 rad/s max), and
+        applying it directly makes downstream consumers (MPC, RLS slip
+        estimator) react to a heading change that never really happened.
+        So the new yaw is only accepted if the implied rate since the
+        last *accepted* reading is within ~max_imu_yaw_rate; otherwise the
+        last good heading is kept and this message's orientation is
+        dropped (angular_velocity/linear_acceleration are still applied
+        either way -- only orientation was ever seen to actually corrupt
+        the control loop).
+        """
         self.angular_velocity_x = data.angular_velocity.x
         self.angular_velocity_y = data.angular_velocity.y
         self.angular_velocity_z = data.angular_velocity.z
@@ -311,14 +329,37 @@ class BeaverbotPoseNode:
         self.linear_acceleration_z = data.linear_acceleration.z
 
         euler = tf.transformations.euler_from_quaternion(
-            [self.quaternion_x,
-             self.quaternion_y,
-             self.quaternion_z,
-             self.quaternion_w])
+            [data.orientation.x,
+             data.orientation.y,
+             data.orientation.z,
+             data.orientation.w])
 
-        self._yaw = euler[2] - self._imu_offset
+        yaw = euler[2] - self._imu_offset
 
-        self._yaw = math.atan2(math.sin(self._yaw), math.cos(self._yaw))
+        yaw = math.atan2(math.sin(yaw), math.cos(yaw))
+
+        now = rospy.Time.now()
+
+        if self._last_good_yaw is not None and self._last_imu_time is not None:
+            dt = (now - self._last_imu_time).to_sec()
+
+            yaw_diff = math.atan2(math.sin(yaw - self._last_good_yaw),
+                                   math.cos(yaw - self._last_good_yaw))
+
+            if dt > 1e-3 and abs(yaw_diff) / dt > self._max_imu_yaw_rate:
+                rospy.logwarn(
+                    f"Rejecting IMU orientation: implied yaw rate "
+                    f"{abs(yaw_diff) / dt:.2f} rad/s exceeds "
+                    f"~max_imu_yaw_rate ({self._max_imu_yaw_rate} rad/s); "
+                    f"keeping last accepted heading.")
+
+                return
+
+        self._last_good_yaw = yaw
+
+        self._last_imu_time = now
+
+        self._yaw = yaw
 
         (self.quaternion_x, self.quaternion_y,
          self.quaternion_z, self.quaternion_w) = tf.transformations. \
