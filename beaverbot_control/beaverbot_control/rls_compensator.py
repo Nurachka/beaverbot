@@ -9,7 +9,7 @@ from beaverbot_control.rls_online import RLSOnline
 
 class RLSCompensator:
     def __init__(self, trajectory, use_forgetting_factor=True,
-                 forgetting_factor=0.98, log_file=None):
+                 forgetting_factor=0.98, slip_clip=0.3, log_file=None):
         """
         Initialize the Recursive Least Squares (RLS) algorithm.
 
@@ -21,6 +21,9 @@ class RLSCompensator:
         forgetting_factor : float: The forgetting factor (lam) passed to
             predict_sim_with_forgetting_factor when use_forgetting_factor
             is True.
+        slip_clip : float: The estimated slip is clipped to
+            [-slip_clip, slip_clip] (see execute()) -- matches
+            MPCRLS's slip_clip.
         log_file : str or None: If set, the path of a CSV file to record
             the estimated slip (and the inputs it was derived from) at
             every step, for offline analysis. Recording is disabled when
@@ -35,6 +38,7 @@ class RLSCompensator:
         self.first_step = True
         self.use_forgetting_factor = use_forgetting_factor
         self.forgetting_factor = forgetting_factor
+        self.slip_clip = slip_clip
         self.log_file = log_file
         # w actually commanded on the previous execute() call (post slip
         # compensation) -- this, not the raw reference, is what the RLS
@@ -86,8 +90,16 @@ class RLSCompensator:
                       f"Last commanded angular velocity: {self._last_w_cmd}")
         self.yaw_previous = unwrapped_yaw
         raw_slip = self.rls.estimates[-1][0, 0]
-        # slip cannot be negative or greater than 1
-        slip = max(0.0, min(raw_slip, 0.3))
+        # Flooring negative estimates to 0 (as before) meant the
+        # compensator could only ever hold at or boost above the raw
+        # reference velocity, never command below it -- so once the
+        # estimate settled on a value that was too high for the day's
+        # actual slip, there was no way back down past "no boost".
+        # Clipping symmetrically instead (matching MPCRLS's slip_clip)
+        # lets a negative fit reduce v, w below the reference, which is
+        # itself a legitimate correction, not just measurement noise to
+        # be discarded.
+        slip = max(-self.slip_clip, min(raw_slip, self.slip_clip))
 
         # Compensate the velocities  and angular velocities
         v = self.trajectory.u[0, index]/(1-slip)
@@ -112,7 +124,8 @@ class RLSCompensator:
         first step, before any command has been sent) -- this is the value
         the RLS update this row was regressed against.
         @param raw_slip<float>: The slip estimate before clipping
-        @param clipped_slip<float>: The slip estimate after clipping to [0, 0.3]
+        @param clipped_slip<float>: The slip estimate after clipping to
+        [-self.slip_clip, self.slip_clip]
         @param v<float>: The compensated linear velocity
         @param w<float>: The compensated angular velocity
         """
