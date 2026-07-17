@@ -67,6 +67,23 @@
         <!-- <param name="~controller_type" value="mpc_rls"/> -->
         <!-- <param name="~mpc_rls_forgetting_factor" value="0.96"/> -->
 
+        <!-- 5) pd: PD (proportional-derivative) tracking controller. Re-derives the tracked
+             trajectory index each tick from the robot's actual position (like mpc), rotates
+             the position error into the robot's heading frame to get longitudinal/lateral
+             errors, and layers a PD correction on the feedforward [v_ref, w_ref]. Tune via
+             ~pd_kp_v/~pd_kd_v (longitudinal/speed gains), ~pd_kp_theta/~pd_kd_theta (heading
+             gains), and ~pd_kp_lat (cross-track gain, feeds into angular velocity); defaults
+             are untuned starting points. ~pd_log_file (default unset): when set to a path,
+             records index/nearest_index/delta_t/state(x,y,theta)/ref(x,y,theta)/
+             e_lon/e_lat/e_theta/v_ref/w_ref/v/w to CSV each step. -->
+        <!-- <param name="~controller_type" value="pd"/> -->
+        <!-- <param name="~pd_kp_v" value="1.0"/> -->
+        <!-- <param name="~pd_kd_v" value="0.1"/> -->
+        <!-- <param name="~pd_kp_theta" value="2.0"/> -->
+        <!-- <param name="~pd_kd_theta" value="0.1"/> -->
+        <!-- <param name="~pd_kp_lat" value="1.0"/> -->
+        <!-- <param name="~pd_log_file" value="$(find beaverbot_control)/logs/pd_tracking.csv"/> -->
+
         <remap from="cmd_vel" to="/cmd_vel"/>
         <remap from="odom" to="/ground_truth/odom"/>
     </node>

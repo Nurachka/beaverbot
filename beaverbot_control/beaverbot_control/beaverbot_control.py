@@ -25,6 +25,7 @@ from beaverbot_control.feedforward import FeedForward
 from beaverbot_control.rls_compensator import RLSCompensator
 from beaverbot_control.mpc import MPC
 from beaverbot_control.mpc_rls import MPCRLS
+from beaverbot_control.pd_controller import PDController
 
 
 class BeaverbotControl(object):
@@ -107,6 +108,24 @@ class BeaverbotControl(object):
         self._rls_log_file = rospy.get_param(
             "~rls_log_file", None)
 
+        self._pd_kp_v = rospy.get_param(
+            "~pd_kp_v", 1.0)
+
+        self._pd_kd_v = rospy.get_param(
+            "~pd_kd_v", 0.1)
+
+        self._pd_kp_theta = rospy.get_param(
+            "~pd_kp_theta", 2.0)
+
+        self._pd_kd_theta = rospy.get_param(
+            "~pd_kd_theta", 0.1)
+
+        self._pd_kp_lat = rospy.get_param(
+            "~pd_kp_lat", 1.0)
+
+        self._pd_log_file = rospy.get_param(
+            "~pd_log_file", None)
+
         self._state = None
 
         self._nu = 2
@@ -150,6 +169,12 @@ class BeaverbotControl(object):
                 vr_max=self._mpc_vr_max, vl_max=self._mpc_vl_max,
                 du_max=self._mpc_du_max, log_file=self._mpc_log_file,
                 lam=self._mpc_rls_forgetting_factor)
+
+        elif self._controller_type == "pd":
+            self._controller = PDController(
+                trajectory, kp_v=self._pd_kp_v, kd_v=self._pd_kd_v,
+                kp_theta=self._pd_kp_theta, kd_theta=self._pd_kd_theta,
+                kp_lat=self._pd_kp_lat, log_file=self._pd_log_file)
         else:
             raise NotImplementedError
 
@@ -207,7 +232,7 @@ class BeaverbotControl(object):
         """! Timer callback
         @param event<Event>: The event
         """
-        if not self._state and self._controller_type in ["pure_pursuit", "rls_compensator", "mpc", "mpc_rls"]:
+        if not self._state and self._controller_type in ["pure_pursuit", "rls_compensator", "mpc", "mpc_rls", "pd"]:
             rospy.logwarn("No current status of the vehicle")
 
             return
