@@ -1,6 +1,8 @@
 <launch>
     <node name="beaverbot_control_node" pkg="beaverbot_control" type="beaverbot_control_node" output="screen">
-        <param name="~trajectory_file" value="$(find beaverbot_control)/trajectories/lemniscate_trajectory.csv"/>
+        <!-- <param name="~trajectory_file" value="$(find beaverbot_control)/trajectories/lemniscate_trajectory.csv"/> -->
+        <param name="~trajectory_file" value="$(find beaverbot_control)/trajectories/lemniscate_slower_velocity_reference.csv"/>
+        <!-- <param name="~trajectory_file" value="$(find beaverbot_control)/trajectories/lemniscate_bigger_path_reference.csv"/> -->
         <!-- <param name="~trajectory_file" value="$(find beaverbot_control)/trajectories/lemniscate_compensated_slip0.1.csv"/> -->
         <!-- <param name="~trajectory_file" value="$(find beaverbot_control)/trajectories/lemniscate_compensated_slip0.2.csv"/> -->
         <!-- <param name="~trajectory_file" value="$(find beaverbot_control)/trajectories/lemniscate_compensated_slip0.05.csv"/> -->
