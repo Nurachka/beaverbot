@@ -98,9 +98,7 @@ class BeaverbotPoseNode:
 
         self._last_gps_time = None
 
-        self._velocity_x = 0.0
-
-        self._velocity_y = 0.0
+        self._encoder_linear_velocity = 0.0
 
         self._enable_position_prediction = rospy.get_param(
             "~enable_position_prediction", True)
@@ -131,6 +129,9 @@ class BeaverbotPoseNode:
 
         self._imu_sub = rospy.Subscriber(
             "/imu", Imu, self._imu_callback)
+
+        self._encoder_odom_sub = rospy.Subscriber(
+            "/beaverbot/odom", Odometry, self._encoder_odom_callback)
 
     def _register_publishers(self):
         """! Register publishers method
@@ -284,19 +285,24 @@ class BeaverbotPoseNode:
 
         now = rospy.Time.now()
 
-        if self._last_gps_time is not None:
-            dt = (now - self._last_gps_time).to_sec()
-
-            if dt > 1e-3:
-                self._velocity_x = (x_rear - self._x_rear) / dt
-
-                self._velocity_y = (y_rear - self._y_rear) / dt
-
         self._x_rear = x_rear
 
         self._y_rear = y_rear
 
         self._last_gps_time = now
+
+    def _encoder_odom_callback(self, data: Odometry):
+        """! Encoder odometry callback method
+        @param data: Odometry message published by encoder_to_odom (see
+        beaverbot_driver/src/beaverbot_driver/encoder_to_odom.cpp),
+        derived from /encoder wheel-tick counts.
+
+        Only twist.twist.linear.x (the wheel-derived forward speed, in
+        the robot's body frame) is used, as the velocity source for
+        _predict_pose's dead reckoning -- see that method's docstring for
+        why this replaced the previous GPS-fix-to-fix finite difference.
+        """
+        self._encoder_linear_velocity = data.twist.twist.linear.x
 
     def _imu_callback(self, data: Imu):
         """! IMU callback method
@@ -367,26 +373,34 @@ class BeaverbotPoseNode:
 
     def _predict_pose(self):
         """! Dead-reckon (x_rear, y_rear) forward from the last GPS fix to
-        now, using the velocity estimated between the last two fixes.
-        /fix only publishes at ~1 Hz, far slower than this node's publish
-        timer, so without this the published odom position would stay
-        frozen for several consecutive publishes after every fix. Yaw
-        (from IMU) is not similarly delayed -- _imu_callback updates it
-        on every IMU message, independent of this method.
+        now, using the wheel-encoder-derived forward speed rotated into
+        the world frame by the current (IMU) yaw. /fix only publishes at
+        ~1 Hz, far slower than this node's publish timer, so without this
+        the published odom position would stay frozen for several
+        consecutive publishes after every fix. Yaw (from IMU) is not
+        similarly delayed -- _imu_callback updates it on every IMU
+        message, independent of this method.
 
-        The fix-to-fix velocity estimate assumes constant velocity over
-        the whole ~1 s gap, which breaks down during sharp turns (speed
-        and heading both change quickly), producing a stale extrapolated
-        position that then "snaps" to the true one once the next fix
-        corrects it. To bound that: the extrapolation speed is clamped to
-        ~max_extrapolation_speed (a physically plausible bound), and the
-        displacement is a first-order lag that saturates toward
-        velocity * ~extrapolation_time_constant instead of growing
-        linearly with dt, so a stale/wrong velocity estimate can't keep
-        accumulating error the longer it's been since the last fix.
-        Disabled via ~enable_position_prediction (default true) -- when
-        false, returns the raw last-fix position unchanged, i.e. the
-        pre-dead-reckoning behavior.
+        Previously the extrapolation velocity was estimated by
+        finite-differencing consecutive GPS fixes (~1 Hz, so effectively
+        one velocity sample per second, noisy for a slow robot and stale
+        for the whole gap). /beaverbot/odom (published by encoder_to_odom
+        from /encoder wheel ticks) updates far faster and reflects the
+        robot's actual current speed rather than an average over the last
+        ~1 s, so _encoder_odom_callback's velocity is used instead;
+        assumes the robot moves along its heading (v*cos(yaw), v*sin(yaw)),
+        matching encoder_to_odom's own nonholonomic (y_dot_b_ = 0)
+        assumption.
+
+        The clamp/lag below is kept as a safety net for a bad/glitched
+        encoder reading, even though it matters less now that the
+        velocity source isn't a stale 1 s average: extrapolation speed is
+        clamped to ~max_extrapolation_speed (a physically plausible
+        bound), and the displacement is a first-order lag that saturates
+        toward velocity * ~extrapolation_time_constant instead of growing
+        linearly with dt. Disabled via ~enable_position_prediction
+        (default true) -- when false, returns the raw last-fix position
+        unchanged, i.e. the pre-dead-reckoning behavior.
         @return<tuple>: The predicted (x_rear, y_rear)
         """
         if not self._enable_position_prediction or self._last_gps_time is None:
@@ -394,19 +408,17 @@ class BeaverbotPoseNode:
 
         dt = (rospy.Time.now() - self._last_gps_time).to_sec()
 
-        speed = math.hypot(self._velocity_x, self._velocity_y)
+        speed = abs(self._encoder_linear_velocity)
 
         if speed > self._max_extrapolation_speed and speed > 0:
-            scale = self._max_extrapolation_speed / speed
-
-            vx = self._velocity_x * scale
-
-            vy = self._velocity_y * scale
-
+            speed = self._max_extrapolation_speed * math.copysign(
+                1.0, self._encoder_linear_velocity)
         else:
-            vx = self._velocity_x
+            speed = self._encoder_linear_velocity
 
-            vy = self._velocity_y
+        vx = speed * math.cos(self._yaw)
+
+        vy = speed * math.sin(self._yaw)
 
         weight = self._extrapolation_time_constant * \
             (1 - math.exp(-dt / self._extrapolation_time_constant))
