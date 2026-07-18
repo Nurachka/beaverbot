@@ -60,7 +60,7 @@ class MPCRLS(MPC):
         @param warmup_steps<int>: Number of initial steps the slip
         estimate is forced to 0.0 while RLS converges.
         @param slip_clip<float>: The estimated slip is clipped to
-        [-slip_clip, slip_clip].
+        [0, slip_clip].
         @param lam<float>: Forgetting factor used by the RLS estimator.
         @param log_file<str or None>: If set, the path of a CSV file to
         record the tracking state at every step (see MPC.__init__).
@@ -145,7 +145,9 @@ class MPCRLS(MPC):
 
         self._yaw_previous = unwrapped_yaw
 
-        slip = float(np.clip(self._rls.estimates[-1][0, 0], -self._slip_clip, self._slip_clip))
+        # Slip is a wheel-speed deficit, not a surplus, so a negative fit is
+        # measurement noise rather than a real effect -- floor it to 0.
+        slip = float(np.clip(self._rls.estimates[-1][0, 0], 0.0, self._slip_clip))
 
         if self._step < self._warmup_steps:
             slip = 0.0
