@@ -9,7 +9,8 @@ from beaverbot_control.rls_online import RLSOnline
 
 class RLSCompensator:
     def __init__(self, trajectory, use_forgetting_factor=True,
-                 forgetting_factor=0.98, slip_clip=0.3, log_file=None):
+                 forgetting_factor=0.98, slip_clip=0.3,
+                 slip_estimation_source="yaw", log_file=None):
         """
         Initialize the Recursive Least Squares (RLS) algorithm.
 
@@ -23,6 +24,22 @@ class RLSCompensator:
             is True.
         slip_clip : float: The estimated slip is clipped to
             [0, slip_clip] (see execute()) -- matches MPCRLS's slip_clip.
+        slip_estimation_source : str: Which measured signal the RLS update
+            is regressed against each tick.
+            "yaw" (default): finite-differences the fused pose's heading
+            (state[2], from beaverbot_pose_node's GPS+IMU pose) each tick.
+            Simple, but inherits that pose's own update characteristics
+            (e.g. it only changes at the ~1 Hz GPS rate when dead
+            reckoning is off, or holds briefly stale during a fusion
+            correction).
+            "yaw_rate": uses the IMU's directly measured angular_velocity_z
+            instead, passed in as `input` to execute() -- a raw gyro
+            reading updated at the IMU's own (much faster) rate,
+            bypassing the fused pose/GPS entirely. Requires the caller to
+            supply that reading via `input` each tick (see
+            BeaverbotControl._measured_angular_velocity_callback, which
+            reads it off /beaverbot_pose/odom's twist.twist.angular.z
+            rather than subscribing to /imu directly).
         log_file : str or None: If set, the path of a CSV file to record
             the estimated slip (and the inputs it was derived from) at
             every step, for offline analysis. Recording is disabled when
@@ -38,6 +55,7 @@ class RLSCompensator:
         self.use_forgetting_factor = use_forgetting_factor
         self.forgetting_factor = forgetting_factor
         self.slip_clip = slip_clip
+        self.slip_estimation_source = slip_estimation_source
         self.log_file = log_file
         # w actually commanded on the previous execute() call (post slip
         # compensation) -- this, not the raw reference, is what the RLS
@@ -48,6 +66,7 @@ class RLSCompensator:
             with open(self.log_file, mode="w", newline="") as file:
                 writer = csv.writer(file)
                 writer.writerow(["index", "delta_t", "yaw", "yaw_previous",
+                                  "measured_angular_velocity_z",
                                   "last_commanded_angular_velocity", "raw_slip",
                                   "clipped_slip", "v", "w"])
 
@@ -55,7 +74,10 @@ class RLSCompensator:
     def execute(self, state, input, index, delta_t):
         """! Execute the controller
         @param state<list>: The state of the vehicle
-        @param input<list>: The input of the vehicle
+        @param input<float or None>: The IMU's measured angular_velocity_z
+        for this tick -- only read when
+        slip_estimation_source == "yaw_rate"; ignored (and may be None)
+        otherwise.
         @param delta_t<float>: The time step
         @return<tuple>: The status and control
         """
@@ -64,8 +86,10 @@ class RLSCompensator:
             return False, [0, 0]
         unwrapped_yaw = np.unwrap([state[2]])[0]
         yaw_previous = self.yaw_previous
+        measured_angular_velocity_z = input if self.slip_estimation_source == "yaw_rate" else None
         if not self.first_step:
-            # The yaw change observed now is the effect of what was actually
+            # The yaw change (or, in "yaw_rate" mode, the measured angular
+            # velocity) observed now is the effect of what was actually
             # commanded last tick (self._last_w_cmd) -- using the raw
             # reference trajectory.u[1, index] instead (as before) biases the
             # estimate, since it doesn't reflect the slip compensation that
@@ -77,14 +101,16 @@ class RLSCompensator:
                     ground_angular_velocity_z=self._last_w_cmd,
                     delta_t=delta_t,
                     lam=self.forgetting_factor,
-                    position=(state[0], state[1]))
+                    position=(state[0], state[1]),
+                    measured_angular_velocity_z=measured_angular_velocity_z)
             else:
                 self.rls.predict_sim(
                     yaw=unwrapped_yaw,
                     yaw_previous=self.yaw_previous,
                     ground_angular_velocity_z=self._last_w_cmd,
                     delta_t=delta_t,
-                    position=(state[0], state[1]))
+                    position=(state[0], state[1]),
+                    measured_angular_velocity_z=measured_angular_velocity_z)
         rospy.loginfo(f"Yaw: {unwrapped_yaw}, Yaw previous: {self.yaw_previous}"
                       f"Last commanded angular velocity: {self._last_w_cmd}")
         self.yaw_previous = unwrapped_yaw
@@ -100,18 +126,23 @@ class RLSCompensator:
         rospy.loginfo(f"Difference in velocities due to slip compensation: v:"
                       f"{v - self.trajectory.u[0, index]}, w: {w - self.trajectory.u[1, index]}, slip: {slip}")
         self._record_slip(index, delta_t, unwrapped_yaw, yaw_previous,
-                           self._last_w_cmd, raw_slip, slip, v, w)
+                           measured_angular_velocity_z, self._last_w_cmd,
+                           raw_slip, slip, v, w)
         self._last_w_cmd = w
         self.first_step = False
         return status, [v, w]
 
     def _record_slip(self, index, delta_t, yaw, yaw_previous,
-                      last_commanded_angular_velocity, raw_slip, clipped_slip, v, w):
+                      measured_angular_velocity_z, last_commanded_angular_velocity,
+                      raw_slip, clipped_slip, v, w):
         """! Append one row of the estimated slip and its inputs to log_file
         @param index<int>: The trajectory index of this step
         @param delta_t<float>: The time step
         @param yaw<float>: The unwrapped yaw at this step
         @param yaw_previous<float>: The unwrapped yaw at the previous step
+        @param measured_angular_velocity_z<float or None>: The IMU-measured
+        angular velocity this row was regressed against when
+        slip_estimation_source == "yaw_rate"; None in "yaw" mode.
         @param last_commanded_angular_velocity<float or None>: The angular
         velocity actually commanded on the previous step (None on the
         first step, before any command has been sent) -- this is the value
@@ -127,6 +158,7 @@ class RLSCompensator:
         with open(self.log_file, mode="a", newline="") as file:
             writer = csv.writer(file)
             writer.writerow([index, delta_t, yaw, yaw_previous,
+                              measured_angular_velocity_z,
                               last_commanded_angular_velocity, raw_slip,
                               clipped_slip, v, w])
     # from reference trajectory getting the reference velocities

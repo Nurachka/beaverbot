@@ -35,12 +35,19 @@
              velocities by 1/(1-slip); no MPC/prediction, just a velocity multiplier.
              Tune via ~rls_use_forgetting_factor (default true; set false to use plain
              predict_sim instead of predict_sim_with_forgetting_factor), ~rls_forgetting_factor
-             (default 0.98, only used when ~rls_use_forgetting_factor is true), and
-             ~rls_log_file (default unset; when set to a path, records index/delta_t/yaw/
-             yaw_previous/angular_velocity/raw_slip/clipped_slip/v/w to CSV each step). -->
+             (default 0.98, only used when ~rls_use_forgetting_factor is true),
+             ~rls_slip_estimation_source (default "yaw": finite-differences the fused
+             beaverbot_pose_node heading each tick; "yaw_rate": uses the IMU's directly
+             measured angular_velocity_z instead, bypassing the fused pose/GPS entirely --
+             read off the same (remappable) "odom" topic's twist.twist.angular.z, which
+             beaverbot_pose_node already republishes from the IMU, so no separate /imu
+             subscription is needed), and ~rls_log_file (default unset; when set to a path, records
+             index/delta_t/yaw/yaw_previous/measured_angular_velocity_z/
+             last_commanded_angular_velocity/raw_slip/clipped_slip/v/w to CSV each step). -->
         <!-- <param name="~controller_type" value="rls_compensator"/> -->
         <!-- <param name="~rls_use_forgetting_factor" value="true"/> -->
         <!-- <param name="~rls_forgetting_factor" value="0.98"/> -->
+        <!-- <param name="~rls_slip_estimation_source" value="yaw"/> -->
         <!-- <param name="~rls_log_file" value="$(find beaverbot_control)/logs/rls_slip.csv"/> -->
 
         <!-- 3) mpc: linear MPC tracking the reference trajectory, fixed/known slip factor
