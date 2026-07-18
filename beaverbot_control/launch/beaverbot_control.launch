@@ -41,9 +41,17 @@
              measured angular_velocity_z instead, bypassing the fused pose/GPS entirely --
              read off the same (remappable) "odom" topic's twist.twist.angular.z, which
              beaverbot_pose_node already republishes from the IMU, so no separate /imu
-             subscription is needed), and ~rls_log_file (default unset; when set to a path, records
+             subscription is needed), ~rls_slip_estimation_max_angular_velocity (default
+             0.4 rad/s; skips the RLS update whenever the last commanded |angular
+             velocity| exceeds this -- logged data shows the commanded/measured gap is
+             ~0 below this but grows substantially above it, i.e. dynamic response lag
+             during a sharp turn rather than persistent slip; without this gate,
+             "yaw_rate" mode has been observed to overturn during the reference's
+             sharpest curve and never recover. Set to 0 or negative to disable), and
+             ~rls_log_file (default unset; when set to a path, records
              index/delta_t/yaw/yaw_previous/measured_angular_velocity_z/
-             last_commanded_angular_velocity/raw_slip/clipped_slip/v/w to CSV each step). -->
+             last_commanded_angular_velocity/update_skipped_high_dynamics/raw_slip/
+             clipped_slip/v/w to CSV each step). -->
         <!-- <param name="~controller_type" value="rls_compensator"/> -->
         <!-- <param name="~rls_use_forgetting_factor" value="true"/> -->
         <!-- <param name="~rls_forgetting_factor" value="0.98"/> -->

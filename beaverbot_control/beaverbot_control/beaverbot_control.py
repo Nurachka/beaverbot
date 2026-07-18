@@ -111,6 +111,9 @@ class BeaverbotControl(object):
         self._rls_slip_estimation_source = rospy.get_param(
             "~rls_slip_estimation_source", "yaw")
 
+        self._rls_slip_estimation_max_angular_velocity = rospy.get_param(
+            "~rls_slip_estimation_max_angular_velocity", 0.4)
+
         self._measured_angular_velocity_z = None
 
         self._pd_kp_v = rospy.get_param(
@@ -154,11 +157,19 @@ class BeaverbotControl(object):
             self._controller = FeedForward(trajectory)
 
         elif self._controller_type == "rls_compensator":
+            # ROS params can't express None directly -- a non-positive
+            # value is the CLI-friendly way to disable the high-dynamics
+            # gate (see RLSCompensator.slip_estimation_max_angular_velocity).
+            max_angular_velocity = self._rls_slip_estimation_max_angular_velocity
+            if max_angular_velocity is not None and max_angular_velocity <= 0:
+                max_angular_velocity = None
+
             self._controller = RLSCompensator(
                 trajectory,
                 use_forgetting_factor=self._rls_use_forgetting_factor,
                 forgetting_factor=self._rls_forgetting_factor,
                 slip_estimation_source=self._rls_slip_estimation_source,
+                slip_estimation_max_angular_velocity=max_angular_velocity,
                 log_file=self._rls_log_file)
 
         elif self._controller_type == "mpc":

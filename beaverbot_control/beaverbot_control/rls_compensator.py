@@ -10,7 +10,8 @@ from beaverbot_control.rls_online import RLSOnline
 class RLSCompensator:
     def __init__(self, trajectory, use_forgetting_factor=True,
                  forgetting_factor=0.98, slip_clip=0.3,
-                 slip_estimation_source="yaw", log_file=None):
+                 slip_estimation_source="yaw",
+                 slip_estimation_max_angular_velocity=0.4, log_file=None):
         """
         Initialize the Recursive Least Squares (RLS) algorithm.
 
@@ -40,6 +41,23 @@ class RLSCompensator:
             BeaverbotControl._measured_angular_velocity_callback, which
             reads it off /beaverbot_pose/odom's twist.twist.angular.z
             rather than subscribing to /imu directly).
+        slip_estimation_max_angular_velocity : float or None: Skip the RLS
+            update (hold the last estimate) on any tick where the last
+            commanded |angular velocity| exceeds this. RLSOnline's model
+            assumes a static gain (measured ~= commanded * (1-slip)); that
+            assumption only holds once the vehicle has settled into the
+            turn. Logged data shows the gap between commanded and
+            IMU-measured angular velocity is ~0 (even slightly negative)
+            for |w| < 0.3 rad/s, but grows to +0.13 rad/s for |w| > 0.5 --
+            i.e. during a sharp turn the deficit is dynamic response
+            lag/inertia, not persistent slip, and the correlation with
+            |w| is 0.50, not a fixed offset. Feeding that into a static
+            model produces a runaway feedback loop: slip is
+            overestimated exactly when the reference calls for its
+            sharpest turn, the resulting boost pushes the command (and
+            thus the lag) higher still, and left unguarded this has been
+            observed to overturn hard enough to lose the path entirely
+            and never recover. Set to None to disable this gate.
         log_file : str or None: If set, the path of a CSV file to record
             the estimated slip (and the inputs it was derived from) at
             every step, for offline analysis. Recording is disabled when
@@ -56,6 +74,7 @@ class RLSCompensator:
         self.forgetting_factor = forgetting_factor
         self.slip_clip = slip_clip
         self.slip_estimation_source = slip_estimation_source
+        self.slip_estimation_max_angular_velocity = slip_estimation_max_angular_velocity
         self.log_file = log_file
         # w actually commanded on the previous execute() call (post slip
         # compensation) -- this, not the raw reference, is what the RLS
@@ -67,7 +86,8 @@ class RLSCompensator:
                 writer = csv.writer(file)
                 writer.writerow(["index", "delta_t", "yaw", "yaw_previous",
                                   "measured_angular_velocity_z",
-                                  "last_commanded_angular_velocity", "raw_slip",
+                                  "last_commanded_angular_velocity",
+                                  "update_skipped_high_dynamics", "raw_slip",
                                   "clipped_slip", "v", "w"])
 
     # writing method to implement online RLS and compensate the velocities from reference file
@@ -87,7 +107,19 @@ class RLSCompensator:
         unwrapped_yaw = np.unwrap([state[2]])[0]
         yaw_previous = self.yaw_previous
         measured_angular_velocity_z = input if self.slip_estimation_source == "yaw_rate" else None
-        if not self.first_step:
+
+        # See slip_estimation_max_angular_velocity in __init__: skip the
+        # update entirely on a tick where the vehicle is mid-sharp-turn --
+        # the deficit between commanded and measured rotation there is
+        # dynamic lag, not persistent slip, and letting it drive the
+        # estimate compounds into a runaway overcorrection right when the
+        # trajectory is hardest to track.
+        high_dynamics = (
+            self.slip_estimation_max_angular_velocity is not None
+            and self._last_w_cmd is not None
+            and abs(self._last_w_cmd) > self.slip_estimation_max_angular_velocity)
+
+        if not self.first_step and not high_dynamics:
             # The yaw change (or, in "yaw_rate" mode, the measured angular
             # velocity) observed now is the effect of what was actually
             # commanded last tick (self._last_w_cmd) -- using the raw
@@ -127,14 +159,14 @@ class RLSCompensator:
                       f"{v - self.trajectory.u[0, index]}, w: {w - self.trajectory.u[1, index]}, slip: {slip}")
         self._record_slip(index, delta_t, unwrapped_yaw, yaw_previous,
                            measured_angular_velocity_z, self._last_w_cmd,
-                           raw_slip, slip, v, w)
+                           high_dynamics, raw_slip, slip, v, w)
         self._last_w_cmd = w
         self.first_step = False
         return status, [v, w]
 
     def _record_slip(self, index, delta_t, yaw, yaw_previous,
                       measured_angular_velocity_z, last_commanded_angular_velocity,
-                      raw_slip, clipped_slip, v, w):
+                      update_skipped_high_dynamics, raw_slip, clipped_slip, v, w):
         """! Append one row of the estimated slip and its inputs to log_file
         @param index<int>: The trajectory index of this step
         @param delta_t<float>: The time step
@@ -147,6 +179,9 @@ class RLSCompensator:
         velocity actually commanded on the previous step (None on the
         first step, before any command has been sent) -- this is the value
         the RLS update this row was regressed against.
+        @param update_skipped_high_dynamics<bool>: True if this tick's RLS
+        update was skipped because |last_commanded_angular_velocity|
+        exceeded slip_estimation_max_angular_velocity (see __init__).
         @param raw_slip<float>: The slip estimate before clipping
         @param clipped_slip<float>: The slip estimate after clipping to
         [0, self.slip_clip]
@@ -159,6 +194,7 @@ class RLSCompensator:
             writer = csv.writer(file)
             writer.writerow([index, delta_t, yaw, yaw_previous,
                               measured_angular_velocity_z,
-                              last_commanded_angular_velocity, raw_slip,
+                              last_commanded_angular_velocity,
+                              update_skipped_high_dynamics, raw_slip,
                               clipped_slip, v, w])
     # from reference trajectory getting the reference velocities
