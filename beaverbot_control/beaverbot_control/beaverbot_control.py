@@ -99,6 +99,9 @@ class BeaverbotControl(object):
         self._mpc_rls_forgetting_factor = rospy.get_param(
             "~mpc_rls_forgetting_factor", 0.96)
 
+        self._mpc_rls_slip_estimation_max_angular_velocity = rospy.get_param(
+            "~mpc_rls_slip_estimation_max_angular_velocity", 0.4)
+
         self._rls_use_forgetting_factor = rospy.get_param(
             "~rls_use_forgetting_factor", True)
 
@@ -180,12 +183,20 @@ class BeaverbotControl(object):
                 du_max=self._mpc_du_max, log_file=self._mpc_log_file)
 
         elif self._controller_type == "mpc_rls":
+            # ROS params can't express None directly -- a non-positive
+            # value is the CLI-friendly way to disable the high-dynamics
+            # gate (see MPCRLS.slip_estimation_max_angular_velocity).
+            mpc_rls_max_angular_velocity = self._mpc_rls_slip_estimation_max_angular_velocity
+            if mpc_rls_max_angular_velocity is not None and mpc_rls_max_angular_velocity <= 0:
+                mpc_rls_max_angular_velocity = None
+
             self._controller = MPCRLS(
                 trajectory, self._length_base, self._sampling_time,
                 N_horizon=self._mpc_horizon,
                 vr_max=self._mpc_vr_max, vl_max=self._mpc_vl_max,
                 du_max=self._mpc_du_max, log_file=self._mpc_log_file,
-                lam=self._mpc_rls_forgetting_factor)
+                lam=self._mpc_rls_forgetting_factor,
+                slip_estimation_max_angular_velocity=mpc_rls_max_angular_velocity)
 
         elif self._controller_type == "pd":
             self._controller = PDController(
