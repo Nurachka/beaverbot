@@ -113,9 +113,6 @@ class BeaverbotPoseNode:
 
         self._last_imu_time = None
 
-        self._extrapolation_time_constant = rospy.get_param(
-            "~extrapolation_time_constant", 0.5)
-
         rospy.loginfo(
             "beaverbot_pose_node initial pose params: "
             f"initial_x={self._initial_x}, initial_y={self._initial_y}, "
@@ -392,15 +389,22 @@ class BeaverbotPoseNode:
         matching encoder_to_odom's own nonholonomic (y_dot_b_ = 0)
         assumption.
 
-        The clamp/lag below is kept as a safety net for a bad/glitched
-        encoder reading, even though it matters less now that the
-        velocity source isn't a stale 1 s average: extrapolation speed is
-        clamped to ~max_extrapolation_speed (a physically plausible
-        bound), and the displacement is a first-order lag that saturates
-        toward velocity * ~extrapolation_time_constant instead of growing
-        linearly with dt. Disabled via ~enable_position_prediction
-        (default true) -- when false, returns the raw last-fix position
-        unchanged, i.e. the pre-dead-reckoning behavior.
+        Displacement is plain linear dead reckoning (vx * dt): the
+        previous version saturated displacement toward a fixed
+        velocity * time-constant ceiling regardless of dt, which was a
+        safety net against the old GPS-finite-difference velocity going
+        stale over the ~1 s fix-to-fix gap. That ceiling is typically
+        reached in a couple hundred ms, well inside the ~1 Hz GPS period,
+        so for the remainder of every gap the prediction silently stopped
+        advancing while the vehicle kept moving -- then the next fix
+        "corrected" the accumulated shortfall as a sudden position jump,
+        once per GPS fix. The live encoder speed doesn't go stale the
+        same way, so growing linearly with dt (bounded only by the
+        ~max_extrapolation_speed clamp on speed itself) tracks actual
+        motion through the whole gap instead of stalling partway through
+        it. Disabled via ~enable_position_prediction (default true) --
+        when false, returns the raw last-fix position unchanged, i.e.
+        the pre-dead-reckoning behavior.
         @return<tuple>: The predicted (x_rear, y_rear)
         """
         if not self._enable_position_prediction or self._last_gps_time is None:
@@ -420,12 +424,9 @@ class BeaverbotPoseNode:
 
         vy = speed * math.sin(self._yaw)
 
-        weight = self._extrapolation_time_constant * \
-            (1 - math.exp(-dt / self._extrapolation_time_constant))
+        x = self._x_rear + vx * dt
 
-        x = self._x_rear + vx * weight
-
-        y = self._y_rear + vy * weight
+        y = self._y_rear + vy * dt
 
         return x, y
 
